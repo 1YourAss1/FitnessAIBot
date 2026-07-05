@@ -25,6 +25,7 @@ Telegram-бот для учёта еды, активности, сна и вес
 | `DB_URL` | JDBC-URL Postgres | `jdbc:postgresql://localhost:5432/fitnessaibot` |
 | `DB_USERNAME` | пользователь БД | `postgres` |
 | `DB_PASSWORD` | пароль БД | `postgres` |
+| `TZ` | тайм-зона JVM (POSIX TZ) — влияет на логи и `recordedAt` | `Europe/Moscow` |
 
 Шаблон для копирования — в [`.env.example`](.env.example:1).
 
