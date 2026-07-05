@@ -1,0 +1,34 @@
+# Git
+.git
+.gitignore
+.gitattributes
+
+# Артефакты сборки (соберём заново внутри контейнера)
+target/
+build/
+*.jar
+*.war
+
+# IDE / редакторы
+.idea/
+.vscode/
+*.iml
+*.iws
+*.ipr
+.classpath
+.project
+.settings/
+
+# Maven
+.m2/
+
+# Локальные секреты (никогда не должны попасть в образ)
+.env
+.env.*
+!.env.example
+
+# Прочие логи и временные файлы
+*.log
+*.tmp
+HELP.md
+.DS_Store

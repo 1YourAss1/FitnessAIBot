@@ -1,0 +1,10 @@
+services:
+  fitnessaibot:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: fitnessaibot:latest
+    container_name: fitnessaibot-bot
+    restart: unless-stopped
+    env_file:
+      - .env
