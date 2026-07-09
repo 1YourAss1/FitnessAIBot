@@ -59,9 +59,10 @@ class EntryToolsTest {
     private static final long USER_A = 111_111L;
     private static final long USER_B = 222_222L;
 
-    /** Контекст с исходным сообщением — то, что в проде кладёт FitnessAgent. */
-    private static ToolContext ctxOf(String text) {
-        return new ToolContext(Map.of(EntryTools.CTX_SOURCE_MESSAGE, text));
+    private static ToolContext ctxOf(long telegramUserId, String text) {
+        return new ToolContext(Map.of(
+                EntryTools.CTX_TELEGRAM_USER_ID, telegramUserId,
+                EntryTools.CTX_SOURCE_MESSAGE, text));
     }
 
     /** Очищает все записи тестового пользователя во всех таблицах. */
@@ -81,8 +82,8 @@ class EntryToolsTest {
     @Test
     void saveFood_persistsEntry_andStoresSourceMessage() {
         String src = "в обед съел макароны с котлетой";
-        FoodEntryEntity saved = tools.saveFood(USER_A,
-                "Макароны с котлетой", 650, 35, 20, 80, null, ctxOf(src));
+        FoodEntryEntity saved = tools.saveFood(
+                "Макароны с котлетой", 650, 35, 20, 80, null, ctxOf(USER_A, src));
 
         assertThat(saved.getId()).isNotNull();
         assertThat(saved.getTelegramUserId()).isEqualTo(USER_A);
@@ -101,8 +102,7 @@ class EntryToolsTest {
     @Test
     void saveActivity_persistsEntry_andStoresSourceMessage() {
         String src = "пробежал 30 минут";
-        ActivityEntryEntity saved = tools.saveActivity(
-                USER_A, "Бег", 30, 280, null, ctxOf(src));
+        ActivityEntryEntity saved = tools.saveActivity( "Бег", 30, 280, null, ctxOf(USER_A, src));
 
         assertThat(saved.getId()).isNotNull();
         assertThat(saved.getDurationMinutes()).isEqualTo(30);
@@ -114,7 +114,7 @@ class EntryToolsTest {
     @Test
     void saveSleep_persistsEntry_andStoresSourceMessage() {
         String src = "спал 7.5 часов";
-        SleepEntryEntity saved = tools.saveSleep(USER_A, 7.5, null, ctxOf(src));
+        SleepEntryEntity saved = tools.saveSleep(7.5, null, ctxOf(USER_A, src));
         assertThat(saved.getId()).isNotNull();
         assertThat(saved.getHours()).isEqualTo(7.5);
         assertThat(saved.getSourceMessage()).isEqualTo(src);
@@ -125,7 +125,7 @@ class EntryToolsTest {
     void saveWeight_updatesProfile_andStoresSourceMessage() {
         clearUser(USER_A);
         String src = "вешу 82.5 кг";
-        WeightEntryEntity saved = tools.saveWeight(USER_A, 82.5, null, ctxOf(src));
+        WeightEntryEntity saved = tools.saveWeight(82.5, null, ctxOf(USER_A, src));
         assertThat(saved.getId()).isNotNull();
         assertThat(saved.getKilograms()).isEqualTo(82.5);
         assertThat(saved.getSourceMessage()).isEqualTo(src);
@@ -138,24 +138,26 @@ class EntryToolsTest {
 
     @Test
     void saveWeight_rejectsOutOfRange() {
-        assertThatThrownBy(() -> tools.saveWeight(USER_A, 0, null, ctxOf("вес 0")))
+        assertThatThrownBy(() -> tools.saveWeight(0.0, null, ctxOf(USER_A, "вес 0")))
                 .isInstanceOf(IllegalArgumentException.class);
-        assertThatThrownBy(() -> tools.saveWeight(USER_A, 600, null, ctxOf("вес 600")))
+        assertThatThrownBy(() -> tools.saveWeight(600.0, null, ctxOf(USER_A, "вес 600")))
                 .isInstanceOf(IllegalArgumentException.class);
     }
 
     @Test
-    void saveFood_withoutToolContext_leavesSourceMessageNull() {
-        // Прямой вызов из теста/админки — без контекста поле остаётся null.
-        FoodEntryEntity saved = tools.saveFood(USER_B,
-                "Творог", 120, 18, 4, 5, null, null);
+    void saveFood_withoutSourceMessageInContext_leavesItNull() {
+        // Контекст с telegramUserId, но без sourceMessage — поле в записи остаётся null.
+        // Без telegramUserId в контексте тул бросит IllegalStateException (см. EntryTools).
+        FoodEntryEntity saved = tools.saveFood("Творог", 120, 18, 4, 5, null,
+                new ToolContext(Map.of(EntryTools.CTX_TELEGRAM_USER_ID, USER_B)));
 
         assertThat(saved.getSourceMessage()).isNull();
+        assertThat(saved.getTelegramUserId()).isEqualTo(USER_B);
     }
 
     @Test
     void readCurrentWeightKg_fallsBackToDefault() {
-        double w = tools.readCurrentWeightKg(USER_B);
+        double w = tools.readCurrentWeightKg(ctxOf(USER_B, ""));
         assertThat(w).isEqualTo(70.0);
     }
 
@@ -163,13 +165,14 @@ class EntryToolsTest {
     void readByTypeAndPeriod_filters() {
         clearUser(USER_A);
 
-        tools.saveFood(USER_A, "X", 100, 1, 1, 1, null, ctxOf("X"));
+        tools.saveFood("X", 100, 1, 1, 1, null, ctxOf(USER_A, "X"));
 
         OffsetDateTime now = OffsetDateTime.now(ZoneOffset.UTC);
-        List<? extends EntryEntity> list = tools.readByTypeAndPeriod(
-                USER_A, "FOOD",
+        List<? extends EntryEntity> list = tools.readByTypeAndPeriod( "FOOD",
                 now.minusHours(1).toString(),
-                now.plusHours(1).toString());
+                now.plusHours(1).toString(),
+                ctxOf(USER_A, ""));
+
         assertThat(list).hasSize(1);
         assertThat(list.getFirst()).isInstanceOf(FoodEntryEntity.class);
     }
@@ -179,8 +182,8 @@ class EntryToolsTest {
         clearUser(USER_A);
         userProfileRepository.findByTelegramUserId(USER_A).ifPresent(userProfileRepository::delete);
 
-        UserProfileEntity saved = tools.saveProfile(USER_A,
-                "мужской", 30, 180.0, 80.0, 75.0, null);
+        UserProfileEntity saved = tools.saveProfile(
+                "мужской", 30, 180.0, 80.0, 75.0, null, ctxOf(USER_A, ""));
         assertThat(saved.getGender()).isEqualTo(Gender.MALE);
         assertThat(saved.getAge()).isEqualTo(30);
         assertThat(saved.getHeightCm()).isEqualTo(180.0);
@@ -188,8 +191,8 @@ class EntryToolsTest {
         assertThat(saved.getGoalWeightKg()).isEqualTo(75.0);
 
         // Частичное обновление — только рост и возраст.
-        UserProfileEntity updated = tools.saveProfile(USER_A,
-                null, 31, 181.0, null, null, null);
+        UserProfileEntity updated = tools.saveProfile(
+                null, 31, 181.0, null, null, null, ctxOf(USER_A, ""));
         assertThat(updated.getGender()).isEqualTo(Gender.MALE);
         assertThat(updated.getAge()).isEqualTo(31);
         assertThat(updated.getHeightCm()).isEqualTo(181.0);
@@ -203,20 +206,20 @@ class EntryToolsTest {
         clearUser(USER_A);
         userProfileRepository.findByTelegramUserId(USER_A).ifPresent(userProfileRepository::delete);
 
-        assertThatThrownBy(() -> tools.saveProfile(USER_A,
-                "MALE", 200, 180.0, 80.0, null, null))
+        assertThatThrownBy(() -> tools.saveProfile(
+                "MALE", 200, 180.0, 80.0, null, null, ctxOf(USER_A, "")))
                 .isInstanceOf(IllegalArgumentException.class);
-        assertThatThrownBy(() -> tools.saveProfile(USER_A,
-                "FEMALE", 30, 300.0, 80.0, null, null))
+        assertThatThrownBy(() -> tools.saveProfile(
+                "FEMALE", 30, 300.0, 80.0, null, null, ctxOf(USER_A, "")))
                 .isInstanceOf(IllegalArgumentException.class);
-        assertThatThrownBy(() -> tools.saveProfile(USER_A,
-                "MALE", 30, 180.0, 600.0, null, null))
+        assertThatThrownBy(() -> tools.saveProfile(
+                "MALE", 30, 180.0, 600.0, null, null, ctxOf(USER_A, "")))
                 .isInstanceOf(IllegalArgumentException.class);
-        assertThatThrownBy(() -> tools.saveProfile(USER_A,
-                "unknown", 30, 180.0, 80.0, null, null))
+        assertThatThrownBy(() -> tools.saveProfile(
+                "unknown", 30, 180.0, 80.0, null, null, ctxOf(USER_A, "")))
                 .isInstanceOf(IllegalArgumentException.class);
-        assertThatThrownBy(() -> tools.saveProfile(USER_A,
-                "MALE", 30, 180.0, 80.0, 600.0, null))
+        assertThatThrownBy(() -> tools.saveProfile(
+                "MALE", 30, 180.0, 80.0, 600.0, null, ctxOf(USER_A, "")))
                 .isInstanceOf(IllegalArgumentException.class);
     }
 
@@ -225,7 +228,7 @@ class EntryToolsTest {
         clearUser(USER_B);
         userProfileRepository.findByTelegramUserId(USER_B).ifPresent(userProfileRepository::delete);
 
-        UserProfileEntity profile = tools.readProfile(USER_B);
+        UserProfileEntity profile = tools.readProfile(ctxOf(USER_B, ""));
         assertThat(profile.getTelegramUserId()).isEqualTo(USER_B);
         assertThat(profile.getGender()).isNull();
         assertThat(profile.getAge()).isNull();
@@ -239,12 +242,12 @@ class EntryToolsTest {
         userProfileRepository.findByTelegramUserId(USER_A).ifPresent(userProfileRepository::delete);
 
         // Без профиля вообще.
-        assertThatThrownBy(() -> tools.calculateBmrTdee(USER_A))
+        assertThatThrownBy(() -> tools.calculateBmrTdee(ctxOf(USER_A, "")))
                 .isInstanceOf(IllegalStateException.class);
 
         // Только вес — не хватает остального.
-        tools.saveProfile(USER_A, null, null, null, 80.0, null, null);
-        assertThatThrownBy(() -> tools.calculateBmrTdee(USER_A))
+        tools.saveProfile(null, null, null, 80.0, null, null, ctxOf(USER_A, ""));
+        assertThatThrownBy(() -> tools.calculateBmrTdee(ctxOf(USER_A, "")))
                 .isInstanceOf(IllegalStateException.class)
                 .hasMessageContaining("BMR");
     }
@@ -254,8 +257,8 @@ class EntryToolsTest {
         clearUser(USER_A);
         userProfileRepository.findByTelegramUserId(USER_A).ifPresent(userProfileRepository::delete);
 
-        tools.saveProfile(USER_A, "MALE", 30, 180.0, 80.0, null, "ACTIVE");
-        BmrCalculator.BmrResult result = tools.calculateBmrTdee(USER_A);
+        tools.saveProfile("MALE", 30, 180.0, 80.0, null, "ACTIVE", ctxOf(USER_A, ""));
+        BmrCalculator.BmrResult result = tools.calculateBmrTdee(ctxOf(USER_A, ""));
         assertThat(result.bmrKcal()).isEqualTo(1780.0);
         assertThat(result.activityLevel()).isEqualTo(BmrCalculator.ActivityLevel.ACTIVE);
         // 1780 * 1.725 = 3070.5 → округлено до 3070.5
@@ -268,9 +271,9 @@ class EntryToolsTest {
         // а модель должна упомянуть это в финальном ответе (см. SYSTEM_PROMPT).
         clearUser(USER_A);
         userProfileRepository.findByTelegramUserId(USER_A).ifPresent(userProfileRepository::delete);
-        tools.saveProfile(USER_A, "MALE", 30, 180.0, 80.0, null, null);
+        tools.saveProfile("MALE", 30, 180.0, 80.0, null, null, ctxOf(USER_A, ""));
 
-        BmrCalculator.BmrResult result = tools.calculateBmrTdee(USER_A);
+        BmrCalculator.BmrResult result = tools.calculateBmrTdee(ctxOf(USER_A, ""));
         assertThat(result.activityLevel()).isEqualTo(BmrCalculator.ActivityLevel.MODERATE);
         // 1780 * 1.55 = 2759
         assertThat(result.tdeeKcal()).isEqualTo(2759.0);
@@ -281,8 +284,8 @@ class EntryToolsTest {
         // saveProfile должен понимать и латиницу, и русские описания уровней.
         clearUser(USER_A);
         userProfileRepository.findByTelegramUserId(USER_A).ifPresent(userProfileRepository::delete);
-        UserProfileEntity saved = tools.saveProfile(USER_A, "MALE", 30, 180.0, 80.0, null,
-                "высокий");
+        UserProfileEntity saved = tools.saveProfile("MALE", 30, 180.0, 80.0, null,
+                "высокий", ctxOf(USER_A, ""));
         assertThat(saved.getActivityLevel()).isEqualTo(BmrCalculator.ActivityLevel.ACTIVE);
     }
 
@@ -291,8 +294,8 @@ class EntryToolsTest {
         clearUser(USER_A);
         userProfileRepository.findByTelegramUserId(USER_A).ifPresent(userProfileRepository::delete);
 
-        assertThatThrownBy(() -> tools.saveProfile(USER_A, "MALE", 30, 180.0, 80.0, null,
-                "ЧАСТО-АКТИВНО"))
+        assertThatThrownBy(() -> tools.saveProfile("MALE", 30, 180.0, 80.0, null,
+                "ЧАСТО-АКТИВНО", ctxOf(USER_A, "")))
                 .isInstanceOf(IllegalArgumentException.class);
     }
 
@@ -311,7 +314,7 @@ class EntryToolsTest {
     void profileContext_includesAlreadySavedFields() {
         clearUser(USER_A);
         userProfileRepository.findByTelegramUserId(USER_A).ifPresent(userProfileRepository::delete);
-        tools.saveProfile(USER_A, "мужской", 30, 180.0, 80.0, null, null);
+        tools.saveProfile("мужской", 30, 180.0, 80.0, null, null, ctxOf(USER_A, ""));
 
         assertThat(profileContextBuilder.build(USER_A))
                 .isEqualTo("profile: gender=MALE age=30 height=180 weight=80");
@@ -321,7 +324,7 @@ class EntryToolsTest {
     void profileContext_partialProfile_keepsOnlyKnownFields() {
         clearUser(USER_A);
         userProfileRepository.findByTelegramUserId(USER_A).ifPresent(userProfileRepository::delete);
-        tools.saveProfile(USER_A, "MALE", null, 180.0, null, null, null);
+        tools.saveProfile("MALE", null, 180.0, null, null, null, ctxOf(USER_A, ""));
 
         assertThat(profileContextBuilder.build(USER_A))
                 .isEqualTo("profile: gender=MALE height=180");
@@ -331,7 +334,7 @@ class EntryToolsTest {
     void profileContext_includesActivityWhenKnown() {
         clearUser(USER_A);
         userProfileRepository.findByTelegramUserId(USER_A).ifPresent(userProfileRepository::delete);
-        tools.saveProfile(USER_A, "MALE", 30, 180.0, 80.0, 78.0, "ACTIVE");
+        tools.saveProfile("MALE", 30, 180.0, 80.0, 78.0, "ACTIVE", ctxOf(USER_A, ""));
 
         assertThat(profileContextBuilder.build(USER_A))
                 .isEqualTo("profile: gender=MALE age=30 height=180 weight=80 goal=78 activity=ACTIVE");
@@ -343,7 +346,7 @@ class EntryToolsTest {
         // это сигнал модели, что активность пока не задана.
         clearUser(USER_A);
         userProfileRepository.findByTelegramUserId(USER_A).ifPresent(userProfileRepository::delete);
-        tools.saveProfile(USER_A, "MALE", 30, 180.0, 80.0, null, null);
+        tools.saveProfile("MALE", 30, 180.0, 80.0, null, null, ctxOf(USER_A, ""));
 
         assertThat(profileContextBuilder.build(USER_A))
                 .isEqualTo("profile: gender=MALE age=30 height=180 weight=80");
@@ -353,7 +356,7 @@ class EntryToolsTest {
     void saveProfile_goal_setsGoalWeight() {
         clearUser(USER_A);
         userProfileRepository.findByTelegramUserId(USER_A).ifPresent(userProfileRepository::delete);
-        tools.saveProfile(USER_A, "MALE", 30, 180.0, 85.0, 78.0, null);
+        tools.saveProfile("MALE", 30, 180.0, 85.0, 78.0, null, ctxOf(USER_A, ""));
 
         UserProfileEntity reloaded = userProfileRepository.findByTelegramUserId(USER_A).orElseThrow();
         assertThat(reloaded.getGoalWeightKg()).isEqualTo(78.0);
@@ -364,7 +367,7 @@ class EntryToolsTest {
     void saveProfile_activity_setsField() {
         clearUser(USER_A);
         userProfileRepository.findByTelegramUserId(USER_A).ifPresent(userProfileRepository::delete);
-        tools.saveProfile(USER_A, "MALE", 30, 180.0, 80.0, null, "MODERATE");
+        tools.saveProfile("MALE", 30, 180.0, 80.0, null, "MODERATE", ctxOf(USER_A, ""));
 
         UserProfileEntity reloaded = userProfileRepository.findByTelegramUserId(USER_A).orElseThrow();
         assertThat(reloaded.getActivityLevel()).isEqualTo(BmrCalculator.ActivityLevel.MODERATE);
@@ -375,8 +378,8 @@ class EntryToolsTest {
         // Установили активность, потом обновили профиль без неё — должно остаться.
         clearUser(USER_A);
         userProfileRepository.findByTelegramUserId(USER_A).ifPresent(userProfileRepository::delete);
-        tools.saveProfile(USER_A, "MALE", 30, 180.0, 80.0, null, "ACTIVE");
-        tools.saveProfile(USER_A, null, null, null, 84.5, null, null);
+        tools.saveProfile("MALE", 30, 180.0, 80.0, null, "ACTIVE", ctxOf(USER_A, ""));
+        tools.saveProfile(null, null, null, 84.5, null, null, ctxOf(USER_A, ""));
 
         UserProfileEntity reloaded = userProfileRepository.findByTelegramUserId(USER_A).orElseThrow();
         assertThat(reloaded.getWeightKg()).isEqualTo(84.5);
@@ -389,7 +392,7 @@ class EntryToolsTest {
         // «у пользователя сейчас нет цели по весу».
         clearUser(USER_A);
         userProfileRepository.findByTelegramUserId(USER_A).ifPresent(userProfileRepository::delete);
-        tools.saveProfile(USER_A, "MALE", 30, 180.0, 80.0, null, null);
+        tools.saveProfile("MALE", 30, 180.0, 80.0, null, null, ctxOf(USER_A, ""));
 
         UserProfileEntity reloaded = userProfileRepository.findByTelegramUserId(USER_A).orElseThrow();
         assertThat(reloaded.getGoalWeightKg()).isNull();
@@ -403,16 +406,17 @@ class EntryToolsTest {
     @Test
     void saveFood_withRecordedAt_persistsForThatDate() {
         clearUser(USER_A);
-        FoodEntryEntity saved = tools.saveFood(USER_A, "Суп", 300, 10, 5, 40,
-                "2026-07-01", ctxOf("первого числа ел суп"));
+        FoodEntryEntity saved = tools.saveFood("Суп", 300, 10, 5, 40,
+                "2026-07-01", ctxOf(USER_A, "первого числа ел суп"));
 
         OffsetDateTime expected = LocalDate.parse("2026-07-01")
                 .atTime(12, 0).atOffset(ZoneOffset.UTC);
         assertThat(saved.getRecordedAt()).isEqualTo(expected);
 
         // Проверяем, что запись попадает в выборку за тот день.
-        List<? extends EntryEntity> july = tools.readByTypeAndPeriod(USER_A, "FOOD",
-                "2026-07-01T00:00:00Z", "2026-07-01T23:59:59Z");
+        List<? extends EntryEntity> july = tools.readByTypeAndPeriod("FOOD",
+                "2026-07-01T00:00:00Z", "2026-07-01T23:59:59Z", ctxOf(USER_A, ""));
+
         assertThat(july).hasSize(1);
         assertThat(july.getFirst().getId()).isEqualTo(saved.getId());
     }
@@ -420,8 +424,8 @@ class EntryToolsTest {
     @Test
     void saveActivity_withRecordedAt_persistsForThatDate() {
         clearUser(USER_A);
-        ActivityEntryEntity saved = tools.saveActivity(USER_A, "Бег",
-                40, 400, "2026-06-28", ctxOf("бегал в воскресенье"));
+        ActivityEntryEntity saved = tools.saveActivity("Бег",
+                40, 400, "2026-06-28", ctxOf(USER_A, "бегал в воскресенье"));
 
         OffsetDateTime expected = LocalDate.parse("2026-06-28")
                 .atTime(12, 0).atOffset(ZoneOffset.UTC);
@@ -431,8 +435,8 @@ class EntryToolsTest {
     @Test
     void saveSleep_withRecordedAt_persistsForThatDate() {
         clearUser(USER_A);
-        SleepEntryEntity saved = tools.saveSleep(USER_A, 8.0,
-                "2026-07-04", ctxOf("ночью спал 8 часов"));
+        SleepEntryEntity saved = tools.saveSleep(8.0,
+                "2026-07-04", ctxOf(USER_A, "ночью спал 8 часов"));
 
         OffsetDateTime expected = LocalDate.parse("2026-07-04")
                 .atTime(12, 0).atOffset(ZoneOffset.UTC);
@@ -442,8 +446,8 @@ class EntryToolsTest {
     @Test
     void saveWeight_withRecordedAt_persistsForThatDate() {
         clearUser(USER_A);
-        WeightEntryEntity saved = tools.saveWeight(USER_A, 81.0,
-                "2026-07-02", ctxOf("взвешивался 2 июля"));
+        WeightEntryEntity saved = tools.saveWeight(81.0,
+                "2026-07-02", ctxOf(USER_A, "взвешивался 2 июля"));
 
         OffsetDateTime expected = LocalDate.parse("2026-07-02")
                 .atTime(12, 0).atOffset(ZoneOffset.UTC);
@@ -458,8 +462,8 @@ class EntryToolsTest {
     void saveFood_withBlankRecordedAt_fallsBackToNow() {
         clearUser(USER_A);
         OffsetDateTime before = OffsetDateTime.now(ZoneOffset.UTC).minusSeconds(1);
-        FoodEntryEntity saved = tools.saveFood(USER_A, "X", 100, 1, 1, 1,
-                "   ", ctxOf("сегодня"));
+        FoodEntryEntity saved = tools.saveFood("X", 100, 1, 1, 1,
+                "   ", ctxOf(USER_A, "сегодня"));
         OffsetDateTime after = OffsetDateTime.now(ZoneOffset.UTC).plusSeconds(1);
 
         assertThat(saved.getRecordedAt()).isBetween(before, after);
@@ -469,8 +473,8 @@ class EntryToolsTest {
     void saveFood_withIsoTimestampRecordedAt_parsesAndNormalizesToUtc() {
         clearUser(USER_A);
         // ISO-8601 с московским смещением (+03:00).
-        FoodEntryEntity saved = tools.saveFood(USER_A, "X", 100, 1, 1, 1,
-                "2026-07-03T23:30:00+03:00", ctxOf("в три ночи мск"));
+        FoodEntryEntity saved = tools.saveFood("X", 100, 1, 1, 1,
+                "2026-07-03T23:30:00+03:00", ctxOf(USER_A, "в три ночи мск"));
         // Должно нормализоваться к 2026-07-03T20:30:00Z.
         assertThat(saved.getRecordedAt()).isEqualTo(
                 OffsetDateTime.parse("2026-07-03T20:30:00Z"));
@@ -479,12 +483,12 @@ class EntryToolsTest {
     @Test
     void saveFood_withGarbageRecordedAt_throws() {
         clearUser(USER_A);
-        assertThatThrownBy(() -> tools.saveFood(USER_A, "X", 100, 1, 1, 1,
-                "вчера", ctxOf("вчера")))
+        assertThatThrownBy(() -> tools.saveFood("X", 100, 1, 1, 1,
+                "вчера", ctxOf(USER_A, "вчера")))
                 .isInstanceOf(IllegalArgumentException.class)
                 .hasMessageContaining("YYYY-MM-DD");
-        assertThatThrownBy(() -> tools.saveFood(USER_A, "X", 100, 1, 1, 1,
-                "2026-13-40", ctxOf("битая дата")))
+        assertThatThrownBy(() -> tools.saveFood("X", 100, 1, 1, 1,
+                "2026-13-40", ctxOf(USER_A, "битая дата")))
                 .isInstanceOf(IllegalArgumentException.class);
     }
 
@@ -493,17 +497,19 @@ class EntryToolsTest {
         clearUser(USER_A);
 
         // Три записи за разные дни.
-        tools.saveFood(USER_A, "A", 100, 1, 1, 1, "2026-06-29", ctxOf("29"));
-        tools.saveFood(USER_A, "B", 200, 1, 1, 1, "2026-07-01", ctxOf("1"));
-        tools.saveFood(USER_A, "C", 300, 1, 1, 1, "2026-07-03", ctxOf("3"));
+        tools.saveFood("A", 100, 1, 1, 1, "2026-06-29", ctxOf(USER_A, "29"));
+        tools.saveFood("B", 200, 1, 1, 1, "2026-07-01", ctxOf(USER_A, "1"));
+        tools.saveFood("C", 300, 1, 1, 1, "2026-07-03", ctxOf(USER_A, "3"));
 
-        List<? extends EntryEntity> wholeWeek = tools.readByTypeAndPeriod(USER_A, "FOOD",
-                "2026-06-29T00:00:00Z", "2026-07-05T23:59:59Z");
+        List<? extends EntryEntity> wholeWeek = tools.readByTypeAndPeriod("FOOD",
+                "2026-06-29T00:00:00Z", "2026-07-05T23:59:59Z", ctxOf(USER_A, ""));
+
         assertThat(wholeWeek).hasSize(3);
 
         // Только 1 июля.
-        List<? extends EntryEntity> july1 = tools.readByTypeAndPeriod(USER_A, "FOOD",
-                "2026-07-01T00:00:00Z", "2026-07-01T23:59:59Z");
+        List<? extends EntryEntity> july1 = tools.readByTypeAndPeriod("FOOD",
+                "2026-07-01T00:00:00Z", "2026-07-01T23:59:59Z", ctxOf(USER_A, ""));
+
         assertThat(july1).hasSize(1);
         assertThat(july1.getFirst().getName()).isEqualTo("B");
     }
@@ -515,15 +521,15 @@ class EntryToolsTest {
     @Test
     void findEntriesByTypeAndDate_returnsOnlyThatDay() {
         clearUser(USER_A);
-        tools.saveFood(USER_A, "Завтрак", 300, 10, 5, 40,
-                "2026-07-01", ctxOf("утром"));
-        tools.saveFood(USER_A, "Ужин", 500, 30, 20, 50,
-                "2026-07-01", ctxOf("вечером"));
-        tools.saveFood(USER_A, "Следующий день", 100, 1, 1, 1,
-                "2026-07-02", ctxOf("на след день"));
+        tools.saveFood("Завтрак", 300, 10, 5, 40,
+                "2026-07-01", ctxOf(USER_A, "утром"));
+        tools.saveFood("Ужин", 500, 30, 20, 50,
+                "2026-07-01", ctxOf(USER_A, "вечером"));
+        tools.saveFood("Следующий день", 100, 1, 1, 1,
+                "2026-07-02", ctxOf(USER_A, "на след день"));
 
-        List<? extends EntryEntity> july1 = tools.findEntriesByTypeAndDate(
-                USER_A, "FOOD", "2026-07-01");
+        List<? extends EntryEntity> july1 = tools.findEntriesByTypeAndDate("FOOD", "2026-07-01", ctxOf(USER_A, ""));
+
         assertThat(july1).hasSize(2);
         assertThat(july1).extracting(e -> e.getName())
                 .containsExactlyInAnyOrder("Завтрак", "Ужин");
@@ -532,49 +538,55 @@ class EntryToolsTest {
     @Test
     void findEntriesByTypeAndDate_blankDate_meansTodayUtc() {
         clearUser(USER_A);
-        tools.saveFood(USER_A, "Сегодня", 100, 1, 1, 1, null, ctxOf("сегодня"));
+        tools.saveFood("Сегодня", 100, 1, 1, 1, null, ctxOf(USER_A, "сегодня"));
 
-        List<? extends EntryEntity> today = tools.findEntriesByTypeAndDate(
-                USER_A, "FOOD", null);
+        List<? extends EntryEntity> today = tools.findEntriesByTypeAndDate("FOOD", null, ctxOf(USER_A, ""));
+
         assertThat(today).hasSize(1);
 
-        List<? extends EntryEntity> blank = tools.findEntriesByTypeAndDate(
-                USER_A, "FOOD", "   ");
+        List<? extends EntryEntity> blank = tools.findEntriesByTypeAndDate("FOOD", "   ", ctxOf(USER_A, ""));
+
         assertThat(blank).hasSize(1);
     }
 
     @Test
     void findEntriesByTypeAndDate_otherTypesAreIsolated() {
         clearUser(USER_A);
-        tools.saveFood(USER_A, "Еда", 100, 1, 1, 1, "2026-07-01", ctxOf("еда"));
-        tools.saveActivity(USER_A, "Бег", 30, 200, "2026-07-01", ctxOf("бег"));
-        tools.saveSleep(USER_A, 7.0, "2026-07-01", ctxOf("сон"));
-        tools.saveWeight(USER_A, 80.0, "2026-07-01", ctxOf("вес"));
+        tools.saveFood("Еда", 100, 1, 1, 1, "2026-07-01", ctxOf(USER_A, "еда"));
+        tools.saveActivity("Бег", 30, 200, "2026-07-01", ctxOf(USER_A, "бег"));
+        tools.saveSleep(7.0, "2026-07-01", ctxOf(USER_A, "сон"));
+        tools.saveWeight(80.0, "2026-07-01", ctxOf(USER_A, "вес"));
 
-        assertThat(tools.findEntriesByTypeAndDate(USER_A, "FOOD", "2026-07-01")).hasSize(1);
-        assertThat(tools.findEntriesByTypeAndDate(USER_A, "ACTIVITY", "2026-07-01")).hasSize(1);
-        assertThat(tools.findEntriesByTypeAndDate(USER_A, "SLEEP", "2026-07-01")).hasSize(1);
-        assertThat(tools.findEntriesByTypeAndDate(USER_A, "WEIGHT", "2026-07-01")).hasSize(1);
+        assertThat(tools.findEntriesByTypeAndDate("FOOD", "2026-07-01", ctxOf(USER_A, ""))).hasSize(1);
+
+        assertThat(tools.findEntriesByTypeAndDate("ACTIVITY", "2026-07-01", ctxOf(USER_A, ""))).hasSize(1);
+
+        assertThat(tools.findEntriesByTypeAndDate("SLEEP", "2026-07-01", ctxOf(USER_A, ""))).hasSize(1);
+
+        assertThat(tools.findEntriesByTypeAndDate("WEIGHT", "2026-07-01", ctxOf(USER_A, ""))).hasSize(1);
+
     }
 
     @Test
     void updateFood_updatesOnlyProvidedFields() {
         clearUser(USER_A);
-        FoodEntryEntity saved = tools.saveFood(USER_A, "Каша", 200, 5, 3, 30,
-                "2026-07-01", ctxOf("каша"));
+        FoodEntryEntity saved = tools.saveFood("Каша", 200, 5, 3, 30,
+                "2026-07-01", ctxOf(USER_A, "каша"));
 
         // Частичное обновление: только calories.
         {
-            EntryEntity updated = tools.updateEntry(USER_A, "FOOD", saved.getId(),
-                    null, 250, null, null, null, null, null, null, null, null);
+            EntryEntity updated = tools.updateEntry("FOOD", saved.getId(),
+                    null, 250, null, null, null, null, null, null, null, null, ctxOf(USER_A, ""));
+
             assertThat(((FoodEntryEntity) updated).getCalories()).isEqualTo(250);
             assertThat(((FoodEntryEntity) updated).getName()).isEqualTo("Каша");
             assertThat(((FoodEntryEntity) updated).getProteinGrams()).isEqualTo(5);
         }
 
         // Меняем имя + жиры.
-        EntryEntity updated2 = tools.updateEntry(USER_A, "FOOD", saved.getId(),
-                "Овсянка", null, null, 8, null, null, null, null, null, null);
+        EntryEntity updated2 = tools.updateEntry("FOOD", saved.getId(),
+                "Овсянка", null, null, 8, null, null, null, null, null, null, ctxOf(USER_A, ""));
+
         assertThat(updated2.getName()).isEqualTo("Овсянка");
         assertThat(((FoodEntryEntity) updated2).getFatGrams()).isEqualTo(8);
         assertThat(((FoodEntryEntity) updated2).getCalories()).isEqualTo(250);
@@ -583,11 +595,12 @@ class EntryToolsTest {
     @Test
     void updateActivity_updatesFields() {
         clearUser(USER_A);
-        ActivityEntryEntity saved = tools.saveActivity(USER_A, "Бег", 30, 280,
-                "2026-07-01", ctxOf("бег"));
+        ActivityEntryEntity saved = tools.saveActivity("Бег", 30, 280,
+                "2026-07-01", ctxOf(USER_A, "бег"));
 
-        EntryEntity updated = tools.updateEntry(USER_A, "ACTIVITY", saved.getId(),
-                null, null, null, null, null, 45, 420, null, null, null);
+        EntryEntity updated = tools.updateEntry("ACTIVITY", saved.getId(),
+                null, null, null, null, null, 45, 420, null, null, null, ctxOf(USER_A, ""));
+
         assertThat(((ActivityEntryEntity) updated).getDurationMinutes()).isEqualTo(45);
         assertThat(((ActivityEntryEntity) updated).getCaloriesBurned()).isEqualTo(420);
     }
@@ -595,21 +608,23 @@ class EntryToolsTest {
     @Test
     void updateSleep_updatesHours() {
         clearUser(USER_A);
-        SleepEntryEntity saved = tools.saveSleep(USER_A, 6.0, "2026-07-01", ctxOf("сон"));
+        SleepEntryEntity saved = tools.saveSleep(6.0, "2026-07-01", ctxOf(USER_A, "сон"));
 
-        EntryEntity updated = tools.updateEntry(USER_A, "SLEEP", saved.getId(),
-                null, null, null, null, null, null, null, 8.5, null, null);
+        EntryEntity updated = tools.updateEntry("SLEEP", saved.getId(),
+                null, null, null, null, null, null, null, 8.5, null, null, ctxOf(USER_A, ""));
+
         assertThat(((SleepEntryEntity) updated).getHours()).isEqualTo(8.5);
     }
 
     @Test
     void updateWeight_updatesValueAndProfile() {
         clearUser(USER_A);
-        WeightEntryEntity saved = tools.saveWeight(USER_A, 80.0,
-                "2026-07-01", ctxOf("вес"));
+        WeightEntryEntity saved = tools.saveWeight(80.0,
+                "2026-07-01", ctxOf(USER_A, "вес"));
 
-        EntryEntity updated = tools.updateEntry(USER_A, "WEIGHT", saved.getId(),
-                null, null, null, null, null, null, null, null, 79.5, null);
+        EntryEntity updated = tools.updateEntry("WEIGHT", saved.getId(),
+                null, null, null, null, null, null, null, null, 79.5, null, ctxOf(USER_A, ""));
+
         assertThat(((WeightEntryEntity) updated).getKilograms()).isEqualTo(79.5);
         // Профиль обновился на новое значение.
         assertThat(userProfileRepository.findByTelegramUserId(USER_A)
@@ -619,13 +634,14 @@ class EntryToolsTest {
     @Test
     void updateEntry_changesRecordedAt() {
         clearUser(USER_A);
-        FoodEntryEntity saved = tools.saveFood(USER_A, "X", 100, 1, 1, 1,
-                "2026-07-01", ctxOf("x"));
+        FoodEntryEntity saved = tools.saveFood("X", 100, 1, 1, 1,
+                "2026-07-01", ctxOf(USER_A, "x"));
 
         OffsetDateTime expected = LocalDate.parse("2026-07-02")
                 .atTime(12, 0).atOffset(ZoneOffset.UTC);
-        EntryEntity moved = tools.updateEntry(USER_A, "FOOD", saved.getId(),
-                null, null, null, null, null, null, null, null, null, "2026-07-02");
+        EntryEntity moved = tools.updateEntry("FOOD", saved.getId(),
+                null, null, null, null, null, null, null, null, null, "2026-07-02", ctxOf(USER_A, ""));
+
         assertThat(moved.getRecordedAt()).isEqualTo(expected);
     }
 
@@ -633,48 +649,56 @@ class EntryToolsTest {
     void updateEntry_rejectsForeignEntry() {
         clearUser(USER_A);
         clearUser(USER_B);
-        FoodEntryEntity other = tools.saveFood(USER_B, "Чужое", 100, 1, 1, 1,
-                "2026-07-01", ctxOf("x"));
+        FoodEntryEntity other = tools.saveFood("Чужое", 100, 1, 1, 1,
+                "2026-07-01", ctxOf(USER_B, "x"));
 
-        assertThatThrownBy(() -> tools.updateEntry(USER_A, "FOOD", other.getId(),
-                null, 999, null, null, null, null, null, null, null, null))
+        assertThatThrownBy(() -> tools.updateEntry("FOOD", other.getId(),
+                null, 999, null, null, null, null, null, null, null, null,
+                ctxOf(USER_A, "")))
                 .isInstanceOf(IllegalArgumentException.class)
                 .hasMessageContaining("другому пользователю");
+
     }
 
     @Test
     void updateEntry_rejectsUnknownId() {
         clearUser(USER_A);
-        assertThatThrownBy(() -> tools.updateEntry(USER_A, "FOOD", 999_999L,
-                null, null, null, null, null, null, null, null, null, null))
+        assertThatThrownBy(() -> tools.updateEntry("FOOD", 999_999L,
+                null, null, null, null, null, null, null, null, null, null,
+                ctxOf(USER_A, "")))
                 .isInstanceOf(IllegalArgumentException.class)
                 .hasMessageContaining("не найдена");
+
     }
 
     @Test
     void deleteEntry_removesIt() {
         clearUser(USER_A);
-        FoodEntryEntity saved = tools.saveFood(USER_A, "Удалить", 100, 1, 1, 1,
-                null, ctxOf("x"));
+        FoodEntryEntity saved = tools.saveFood("Удалить", 100, 1, 1, 1,
+                null, ctxOf(USER_A, "x"));
 
-        boolean ok = tools.deleteEntry(USER_A, "FOOD", saved.getId());
+        boolean ok = tools.deleteEntry("FOOD", saved.getId(), ctxOf(USER_A, ""));
+
         assertThat(ok).isTrue();
         assertThat(foodRepository.findById(saved.getId())).isEmpty();
     }
 
     @Test
     void deleteEntry_returnsFalseWhenMissing() {
-        assertThat(tools.deleteEntry(USER_A, "FOOD", 999_999L)).isFalse();
+        assertThat(tools.deleteEntry("FOOD", 999_999L, ctxOf(USER_A, ""))).isFalse();
+
     }
 
     @Test
     void deleteEntry_rejectsForeignEntry() {
         clearUser(USER_B);
-        FoodEntryEntity other = tools.saveFood(USER_B, "Чужое", 100, 1, 1, 1,
-                null, ctxOf("x"));
+        FoodEntryEntity other = tools.saveFood("Чужое", 100, 1, 1, 1,
+                null, ctxOf(USER_B, "x"));
 
-        assertThatThrownBy(() -> tools.deleteEntry(USER_A, "FOOD", other.getId()))
+        assertThatThrownBy(() -> tools.deleteEntry("FOOD", other.getId(),
+                ctxOf(USER_A, "")))
                 .isInstanceOf(IllegalArgumentException.class);
+
         // Чужая запись должна остаться на месте.
         assertThat(foodRepository.findById(other.getId())).isPresent();
     }
@@ -682,45 +706,49 @@ class EntryToolsTest {
     @Test
     void deleteEntriesByTypeAndDate_removesAllForDay() {
         clearUser(USER_A);
-        tools.saveFood(USER_A, "Завтрак", 300, 10, 5, 40,
-                "2026-07-01", ctxOf("z"));
-        tools.saveFood(USER_A, "Ужин", 500, 30, 20, 50,
-                "2026-07-01", ctxOf("u"));
-        tools.saveFood(USER_A, "Следующий день", 100, 1, 1, 1,
-                "2026-07-02", ctxOf("next"));
+        tools.saveFood("Завтрак", 300, 10, 5, 40,
+                "2026-07-01", ctxOf(USER_A, "z"));
+        tools.saveFood("Ужин", 500, 30, 20, 50,
+                "2026-07-01", ctxOf(USER_A, "u"));
+        tools.saveFood("Следующий день", 100, 1, 1, 1,
+                "2026-07-02", ctxOf(USER_A, "next"));
 
-        int removed = tools.deleteEntriesByTypeAndDate(USER_A, "FOOD", "2026-07-01");
+        int removed = tools.deleteEntriesByTypeAndDate("FOOD", "2026-07-01", ctxOf(USER_A, ""));
+
         assertThat(removed).isEqualTo(2);
 
         // Осталась только запись за следующий день.
-        List<? extends EntryEntity> left = tools.findEntriesByTypeAndDate(
-                USER_A, "FOOD", "2026-07-02");
+        List<? extends EntryEntity> left = tools.findEntriesByTypeAndDate("FOOD", "2026-07-02", ctxOf(USER_A, ""));
+
         assertThat(left).hasSize(1);
     }
 
     @Test
     void deleteEntriesByTypeAndDate_blankDateRemovesTodayOnly() {
         clearUser(USER_A);
-        tools.saveFood(USER_A, "Сегодня", 100, 1, 1, 1, null, ctxOf("today"));
-        tools.saveFood(USER_A, "Вчера", 200, 1, 1, 1,
+        tools.saveFood("Сегодня", 100, 1, 1, 1, null, ctxOf(USER_A, "today"));
+        tools.saveFood("Вчера", 200, 1, 1, 1,
                 OffsetDateTime.now(ZoneOffset.UTC).minusDays(2)
                         .format(java.time.format.DateTimeFormatter.ISO_LOCAL_DATE),
-                ctxOf("вчера"));
+                ctxOf(USER_A, "вчера"));
 
-        int removed = tools.deleteEntriesByTypeAndDate(USER_A, "FOOD", null);
+        int removed = tools.deleteEntriesByTypeAndDate("FOOD", null, ctxOf(USER_A, ""));
+
         assertThat(removed).isEqualTo(1);
 
         // Запись за вчера должна остаться.
-        List<? extends EntryEntity> yesterday = tools.readByTypeAndPeriod(USER_A, "FOOD",
+        List<? extends EntryEntity> yesterday = tools.readByTypeAndPeriod("FOOD",
                 OffsetDateTime.now(ZoneOffset.UTC).minusDays(3).toString(),
-                OffsetDateTime.now(ZoneOffset.UTC).minusDays(1).toString());
+                OffsetDateTime.now(ZoneOffset.UTC).minusDays(1).toString(), ctxOf(USER_A, ""));
+
         assertThat(yesterday).isNotEmpty();
     }
 
     @Test
     void deleteEntriesByTypeAndDate_zeroIfNothingMatches() {
         clearUser(USER_A);
-        int removed = tools.deleteEntriesByTypeAndDate(USER_A, "FOOD", "2026-07-01");
+        int removed = tools.deleteEntriesByTypeAndDate("FOOD", "2026-07-01", ctxOf(USER_A, ""));
+
         assertThat(removed).isZero();
     }
 }

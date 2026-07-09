@@ -103,13 +103,13 @@ public class FitnessAgent {
         log.info("Agent handle: user={} text='{}'", telegramUserId, userMessage);
         String nowUtc = OffsetDateTime.now(ZoneOffset.UTC)
                 .format(DateTimeFormatter.ISO_OFFSET_DATE_TIME);
-        // Префикс user-prompt: текущая дата + telegramUserId + профиль + текст.
         String profileCtx = profileContextBuilder.build(telegramUserId);
-        String wrapped = "now=" + nowUtc + " tg:" + telegramUserId
-                + " " + profileCtx + ": " + userMessage;
+        String wrapped = "now=" + nowUtc + " " + profileCtx + ": " + userMessage;
         String raw = chatClient.prompt()
                 .user(wrapped)
-                .toolContext(Map.of("sourceMessage", userMessage))
+                .toolContext(Map.of(
+                        EntryTools.CTX_TELEGRAM_USER_ID, telegramUserId,
+                        EntryTools.CTX_SOURCE_MESSAGE, userMessage))
                 .advisors(a -> a.param(
                         org.springframework.ai.chat.memory.ChatMemory.CONVERSATION_ID,
                         telegramUserId))

@@ -35,7 +35,7 @@ import java.util.Locale;
 @RequiredArgsConstructor
 public class EntryTools {
 
-    /** Ключ в {@link ToolContext} с исходным сообщением пользователя. */
+    public static final String CTX_TELEGRAM_USER_ID = "telegramUserId";
     public static final String CTX_SOURCE_MESSAGE = "sourceMessage";
 
     private static final Logger log = LoggerFactory.getLogger(EntryTools.class);
@@ -52,16 +52,20 @@ public class EntryTools {
     @Tool(description = "Сохраняет запись о приёме пищи. Вызывай, когда пользователь сообщает что съел.")
     @Transactional
     public FoodEntryEntity saveFood(
-            @ToolParam(description = "Идентификатор пользователя Telegram") long telegramUserId,
             @ToolParam(description = "Краткое название блюда/продукта") String name,
-            @ToolParam(description = "Калорийность порции, ккал — целое число") int calories,
-            @ToolParam(description = "Белки, грамм — целое число") int proteinGrams,
-            @ToolParam(description = "Жиры, грамм — целое число") int fatGrams,
-            @ToolParam(description = "Углеводы, грамм — целое число") int carbsGrams,
+            @ToolParam(description = "Калорийность порции, ккал — целое число") Integer calories,
+            @ToolParam(description = "Белки, грамм — целое число") Integer proteinGrams,
+            @ToolParam(description = "Жиры, грамм — целое число") Integer fatGrams,
+            @ToolParam(description = "Углеводы, грамм — целое число") Integer carbsGrams,
             @ToolParam(description = "Дата записи в формате 'YYYY-MM-DD' (UTC-день). "
                     + "null или пустая строка — сегодня по UTC.",
                     required = false) String recordedAt,
             ToolContext toolContext) {
+        Long telegramUserId = telegramUserIdFromContext(toolContext);
+        requireNonNull(calories, "calories");
+        requireNonNull(proteinGrams, "proteinGrams");
+        requireNonNull(fatGrams, "fatGrams");
+        requireNonNull(carbsGrams, "carbsGrams");
         FoodEntryEntity entity = new FoodEntryEntity(telegramUserId, safeName(name),
                 calories, proteinGrams, fatGrams, carbsGrams);
         applyRecordedAt(entity, recordedAt);
@@ -76,14 +80,16 @@ public class EntryTools {
             + "о тренировке, прогулке, беге, велосипеде, плавании и т.п.")
     @Transactional
     public ActivityEntryEntity saveActivity(
-            @ToolParam(description = "Идентификатор пользователя Telegram") long telegramUserId,
             @ToolParam(description = "Название активности") String name,
-            @ToolParam(description = "Длительность, минуты — целое число") int durationMinutes,
-            @ToolParam(description = "Сожжённые калории, ккал — целое число") int caloriesBurned,
+            @ToolParam(description = "Длительность, минуты — целое число") Integer durationMinutes,
+            @ToolParam(description = "Сожжённые калории, ккал — целое число") Integer caloriesBurned,
             @ToolParam(description = "Дата записи в формате 'YYYY-MM-DD' (UTC-день). "
                     + "null или пустая строка — сегодня по UTC.",
                     required = false) String recordedAt,
             ToolContext toolContext) {
+        Long telegramUserId = telegramUserIdFromContext(toolContext);
+        requireNonNull(durationMinutes, "durationMinutes");
+        requireNonNull(caloriesBurned, "caloriesBurned");
         ActivityEntryEntity entity = new ActivityEntryEntity(telegramUserId, safeName(name),
                 durationMinutes, caloriesBurned);
         applyRecordedAt(entity, recordedAt);
@@ -100,12 +106,13 @@ public class EntryTools {
             + "а сейчас утро — записывай за вчерашний день.")
     @Transactional
     public SleepEntryEntity saveSleep(
-            @ToolParam(description = "Идентификатор пользователя Telegram") long telegramUserId,
-            @ToolParam(description = "Часы сна — дробное число, например 6.5") double hours,
+            @ToolParam(description = "Часы сна — дробное число, например 6.5") Double hours,
             @ToolParam(description = "Дата записи в формате 'YYYY-MM-DD' (UTC-день). "
                     + "null или пустая строка — сегодня по UTC.",
                     required = false) String recordedAt,
             ToolContext toolContext) {
+        Long telegramUserId = telegramUserIdFromContext(toolContext);
+        requireNonNull(hours, "hours");
         SleepEntryEntity entity = new SleepEntryEntity(telegramUserId, hours);
         applyRecordedAt(entity, recordedAt);
         applySourceMessage(entity, toolContext);
@@ -119,12 +126,13 @@ public class EntryTools {
             + "Также обновляет сохранённый вес в профиле — он используется для расчёта калорий при активностях.")
     @Transactional
     public WeightEntryEntity saveWeight(
-            @ToolParam(description = "Идентификатор пользователя Telegram") long telegramUserId,
-            @ToolParam(description = "Вес в килограммах — дробное число") double kilograms,
+            @ToolParam(description = "Вес в килограммах — дробное число") Double kilograms,
             @ToolParam(description = "Дата записи в формате 'YYYY-MM-DD' (UTC-день). "
                     + "null или пустая строка — сегодня по UTC.",
                     required = false) String recordedAt,
             ToolContext toolContext) {
+        Long telegramUserId = telegramUserIdFromContext(toolContext);
+        requireNonNull(kilograms, "kilograms");
         if (kilograms <= 0 || kilograms > 500) {
             throw new IllegalArgumentException("Подозрительное значение веса: " + kilograms);
         }
@@ -146,10 +154,11 @@ public class EntryTools {
     @Tool(description = "Возвращает записи конкретного типа за период. "
             + "Вызывай для аналитики: «сколько калорий за неделю», «средний сон за месяц» и т.п.")
     public List<? extends EntryEntity> readByTypeAndPeriod(
-            @ToolParam(description = "Идентификатор пользователя Telegram") long telegramUserId,
             @ToolParam(description = "Тип записи: одно из FOOD, ACTIVITY, SLEEP, WEIGHT") String type,
             @ToolParam(description = "Начало периода, ISO-8601 (например 2026-06-23T00:00:00Z)") String from,
-            @ToolParam(description = "Конец периода, ISO-8601 (например 2026-06-30T23:59:59Z)") String to) {
+            @ToolParam(description = "Конец периода, ISO-8601 (например 2026-06-30T23:59:59Z)") String to,
+            ToolContext toolContext) {
+        Long telegramUserId = telegramUserIdFromContext(toolContext);
         String normalizedType = type.trim().toUpperCase();
         OffsetDateTime fromTs = OffsetDateTime.parse(from).withOffsetSameInstant(ZoneOffset.UTC);
         OffsetDateTime toTs = OffsetDateTime.parse(to).withOffsetSameInstant(ZoneOffset.UTC);
@@ -169,8 +178,8 @@ public class EntryTools {
     @Tool(description = "Возвращает текущий сохранённый вес пользователя в килограммах. "
             + "Если вес ещё не сообщался — вернётся 70.0 (значение по умолчанию). "
             + "Вызывай перед расчётом caloriesBurned в saveActivity, если вес не указан в сообщении.")
-    public double readCurrentWeightKg(
-            @ToolParam(description = "Идентификатор пользователя Telegram") long telegramUserId) {
+    public double readCurrentWeightKg(ToolContext toolContext) {
+        Long telegramUserId = telegramUserIdFromContext(toolContext);
         return userProfileRepository.findByTelegramUserId(telegramUserId)
                 .map(UserProfileEntity::getWeightKg)
                 .filter(w -> w > 0)
@@ -181,11 +190,12 @@ public class EntryTools {
             + "Используй ПЕРЕД сохранением, чтобы проверить, нет ли уже такой записи — "
             + "если пользователь случайно повторяет ввод или хочет исправить уже записанное.")
     public List<? extends EntryEntity> findEntriesByTypeAndDate(
-            @ToolParam(description = "Идентификатор пользователя Telegram") long telegramUserId,
             @ToolParam(description = "Тип записи: FOOD, ACTIVITY, SLEEP, WEIGHT") String type,
             @ToolParam(description = "Дата в формате 'YYYY-MM-DD' (UTC-день). "
                     + "null или пустая строка — сегодня по UTC.",
-                    required = false) String date) {
+                    required = false) String date,
+            ToolContext toolContext) {
+        Long telegramUserId = telegramUserIdFromContext(toolContext);
         String normalizedType = type.trim().toUpperCase();
         LocalDate day = (date == null || date.isBlank())
                 ? LocalDate.now(ZoneOffset.UTC)
@@ -214,9 +224,8 @@ public class EntryTools {
             + "Для SLEEP: hours. Для WEIGHT: kilograms.")
     @Transactional
     public EntryEntity updateEntry(
-            @ToolParam(description = "Идентификатор пользователя Telegram") long telegramUserId,
             @ToolParam(description = "Тип записи: FOOD, ACTIVITY, SLEEP, WEIGHT") String type,
-            @ToolParam(description = "id обновляемой записи (long)") long id,
+            @ToolParam(description = "id обновляемой записи") Long id,
             @ToolParam(description = "Новое название (для FOOD/ACTIVITY). null — не менять.",
                     required = false) String name,
             @ToolParam(description = "Новая калорийность (FOOD). null — не менять.",
@@ -236,7 +245,10 @@ public class EntryTools {
             @ToolParam(description = "Новый вес, кг (WEIGHT). null — не менять.",
                     required = false) Double kilograms,
             @ToolParam(description = "Новая дата записи в формате 'YYYY-MM-DD' (UTC-день). "
-                    + "null — не менять.", required = false) String recordedAt) {
+                    + "null — не менять.", required = false) String recordedAt,
+            ToolContext toolContext) {
+        Long telegramUserId = telegramUserIdFromContext(toolContext);
+        requireNonNull(id, "id");
         String normalizedType = type.trim().toUpperCase();
         EntryEntity updated = switch (normalizedType) {
             case "FOOD" -> {
@@ -309,9 +321,11 @@ public class EntryTools {
             + "Возвращает true, если запись была удалена; false, если не найдена.")
     @Transactional
     public boolean deleteEntry(
-            @ToolParam(description = "Идентификатор пользователя Telegram") long telegramUserId,
             @ToolParam(description = "Тип записи: FOOD, ACTIVITY, SLEEP, WEIGHT") String type,
-            @ToolParam(description = "id удаляемой записи") long id) {
+            @ToolParam(description = "id удаляемой записи") Long id,
+            ToolContext toolContext) {
+        Long telegramUserId = telegramUserIdFromContext(toolContext);
+        requireNonNull(id, "id");
         String normalizedType = type.trim().toUpperCase();
         return switch (normalizedType) {
             case "FOOD" -> {
@@ -351,11 +365,12 @@ public class EntryTools {
             + "Возвращает количество удалённых записей.")
     @Transactional
     public int deleteEntriesByTypeAndDate(
-            @ToolParam(description = "Идентификатор пользователя Telegram") long telegramUserId,
             @ToolParam(description = "Тип записи: FOOD, ACTIVITY, SLEEP, WEIGHT") String type,
             @ToolParam(description = "Дата в формате 'YYYY-MM-DD' (UTC-день). "
                     + "null или пустая строка — сегодня по UTC.",
-                    required = false) String date) {
+                    required = false) String date,
+            ToolContext toolContext) {
+        Long telegramUserId = telegramUserIdFromContext(toolContext);
         String normalizedType = type.trim().toUpperCase();
         LocalDate day = (date == null || date.isBlank())
                 ? LocalDate.now(ZoneOffset.UTC)
@@ -402,7 +417,6 @@ public class EntryTools {
             + "BMR/TDEE по формуле Миффлина-Сан Жеора и для оценки прогресса к цели по весу.")
     @Transactional
     public UserProfileEntity saveProfile(
-            @ToolParam(description = "Идентификатор пользователя Telegram") long telegramUserId,
             @ToolParam(description = "Пол: MALE или FEMALE, либо строка на русском (мужской/женский). null — не менять.",
                     required = false) String gender,
             @ToolParam(description = "Возраст в полных годах, целое число 1-120. null — не менять.",
@@ -418,7 +432,9 @@ public class EntryTools {
             @ToolParam(description = "Уровень активности: SEDENTARY, LIGHT, MODERATE, ACTIVE, VERY_ACTIVE. "
                     + "null — не менять. Используется для перевода BMR в TDEE. "
                     + "Можно передавать латиницей или по-русски (малоподвижный/лёгкий/умеренный/высокий/очень_высокий).",
-                    required = false) String activityLevel) {
+                    required = false) String activityLevel,
+            ToolContext toolContext) {
+        Long telegramUserId = telegramUserIdFromContext(toolContext);
         Gender parsedGender = parseGender(gender);
         BmrCalculator.ActivityLevel parsedLevel = parseActivityLevelOrNull(activityLevel);
         if (age != null && (age < 1 || age > 120)) {
@@ -465,8 +481,8 @@ public class EntryTools {
     @Tool(description = "Возвращает сохранённый профиль пользователя (пол, возраст, рост, вес). "
             + "Если профиля ещё нет — вернёт пустую запись. Используй, чтобы понять, какие данные "
             + "уже известны, и при необходимости попросить пользователя дополнить их.")
-    public UserProfileEntity readProfile(
-            @ToolParam(description = "Идентификатор пользователя Telegram") long telegramUserId) {
+    public UserProfileEntity readProfile(ToolContext toolContext) {
+        Long telegramUserId = telegramUserIdFromContext(toolContext);
         return userProfileRepository.findByTelegramUserId(telegramUserId)
                 .orElseGet(() -> new UserProfileEntity(telegramUserId, null, null));
     }
@@ -478,8 +494,8 @@ public class EntryTools {
             + "Если в профиле его нет — используется дефолт MODERATE "
             + "(3-5 тренировок в неделю); об этом нужно упомянуть пользователю в ответе. "
             + "BmrResult.bmrKcal — ккал в покое; BmrResult.tdeeKcal — ккал с учётом активности.")
-    public BmrCalculator.BmrResult calculateBmrTdee(
-            @ToolParam(description = "Идентификатор пользователя Telegram") long telegramUserId) {
+    public BmrCalculator.BmrResult calculateBmrTdee(ToolContext toolContext) {
+        Long telegramUserId = telegramUserIdFromContext(toolContext);
         UserProfileEntity profile = userProfileRepository.findByTelegramUserId(telegramUserId)
                 .orElseThrow(() -> new IllegalStateException(
                         "Профиль пользователя не найден. Сначала вызови saveProfile."));
@@ -500,6 +516,43 @@ public class EntryTools {
 
     private static String safeName(String name) {
         return (name == null || name.isBlank()) ? "без названия" : name.trim();
+    }
+
+    /**
+     * Извлекает идентификатор пользователя Telegram из {@link ToolContext}.
+     * <p>Агент ({@link FitnessAgent}) кладёт реальный {@code chat.id} в
+     * {@link #CTX_TELEGRAM_USER_ID} ДО вызова тула, и модель этот ключ не видит —
+     * не может его «забыть» или подменить. Если ключа нет (тул вызван вне
+     * Spring AI Tool Calling, например из юнит-теста без контекста) — это
+     * серверная ошибка, бросаем {@link IllegalStateException}.</p>
+     */
+    private static Long telegramUserIdFromContext(ToolContext toolContext) {
+        if (toolContext == null) {
+            throw new IllegalStateException(
+                    "Tool вызван без ToolContext — telegramUserId должен приходить "
+                            + "из контекста, заполняемого FitnessAgent.");
+        }
+        Object raw = toolContext.getContext().get(CTX_TELEGRAM_USER_ID);
+        if (raw instanceof Long id) {
+            return id;
+        }
+        throw new IllegalStateException(
+                "В ToolContext нет telegramUserId (тип=" + (raw == null ? "null" : raw.getClass().getSimpleName())
+                        + "). Это серверная ошибка — проверь, что FitnessAgent.handle() "
+                        + "кладёт CTX_TELEGRAM_USER_ID в .toolContext(...).");
+    }
+
+    /**
+     * Бросает понятный {@link IllegalArgumentException}, если модель не передала
+     * обязательный аргумент тул-метода. Без этого Spring AI через MethodHandle
+     * упал бы в NPE при попытке распаковать {@code null} в примитив.
+     */
+    private static void requireNonNull(Object value, String paramName) {
+        if (value == null) {
+            throw new IllegalArgumentException(
+                    "Модель не передала обязательный аргумент '" + paramName
+                            + "'. Попробуй вызвать тул ещё раз с явным значением.");
+        }
     }
 
     /**
