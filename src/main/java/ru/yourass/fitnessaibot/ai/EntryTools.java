@@ -162,9 +162,7 @@ public class EntryTools {
     }
 
     @Tool(description = "Возвращает записи конкретного типа за период. "
-            + "Вызывай для аналитики: «сколько калорий за неделю», «средний сон за месяц» и т.п. "
-            + "Для SLEEP используй поле formattedHours (\"7 часов 54 минуты\") вместо hours; "
-            + "для ACTIVITY — поле formattedDuration (\"1 час 30 минут\") вместо durationMinutes.")
+            + "Вызывай для аналитики: «сколько калорий за неделю», «средний сон за месяц» и т.п.")
     public List<? extends EntryEntity> readByTypeAndPeriod(
             @ToolParam(description = "Тип записи: одно из FOOD, ACTIVITY, SLEEP, WEIGHT") String type,
             @ToolParam(description = "Начало периода, ISO-8601 (например 2026-06-23T00:00:00Z)") String from,
