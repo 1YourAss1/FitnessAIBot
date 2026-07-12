@@ -35,4 +35,13 @@ public class SleepEntryEntity extends EntryEntity {
     public String type() {
         return "SLEEP";
     }
+
+    /**
+     * Длительность сна в человеческом формате для ответов агенту/пользователю:
+     * {@code 7.9} → {@code "7 часов 54 минуты"}, {@code 6.0} → {@code "6 часов"}.
+     */
+    public String getFormattedHours() {
+        if (hours == null) return null;
+        return RussianPlural.formatHours(hours);
+    }
 }

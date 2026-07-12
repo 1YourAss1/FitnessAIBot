@@ -123,7 +123,7 @@ public class FitnessBot {
             send(chatId, """
                     Пришли, пожалуйста, текстовое сообщение.
                     Например: "в обед съел котлетки с пюрешкой".
-                    """);
+                    """, true);
             return;
         }
 
@@ -159,13 +159,13 @@ public class FitnessBot {
             log.error("Agent failed for user {}", chatId, ex);
             reply = "⚠️ Не получилось обработать сообщение: " + ex.getMessage();
         }
-        send(chatId, reply);
+        send(chatId, reply, false);
     }
 
-    private void send(long chatId, String text) {
-        String prepared = prepareForMarkdown(text);
+    private void send(long chatId, String text, boolean needPrepareForMarkdown) {
         try {
-            SendMessage req = new SendMessage(chatId, prepared).parseMode(ParseMode.Markdown);
+            SendMessage req = new SendMessage(chatId, needPrepareForMarkdown ? prepareForMarkdown(text) : text)
+                    .parseMode(ParseMode.Markdown);
             telegramBot.execute(req);
         } catch (Exception e) {
             log.error("Failed to send Telegram message to {}", chatId, e);
@@ -199,14 +199,14 @@ public class FitnessBot {
         }
     }
 
-    /** true, если у пользователя заполнены все 4 поля, нужные для BMR/TDEE. */
+    /** Возвращает true, если у пользователя заполнены все 4 поля, нужные для BMR/TDEE. */
     boolean hasBmrProfile(long telegramUserId) {
         return userProfileRepository.findByTelegramUserId(telegramUserId)
                 .map(UserProfileEntity::hasBmrInputs)
                 .orElse(false);
     }
 
-    /** true, если у пользователя задана цель по весу. */
+    /** Возвращает true, если у пользователя задана цель по весу. */
     boolean hasGoalWeight(long telegramUserId) {
         return userProfileRepository.findByTelegramUserId(telegramUserId)
                 .map(p -> p.getGoalWeightKg() != null && p.getGoalWeightKg() > 0)
@@ -214,7 +214,7 @@ public class FitnessBot {
     }
 
     /**
-     * true, если у пользователя задан уровень ежедневной активности —
+     * Возвращает true, если у пользователя задан уровень ежедневной активности —
      * иначе BMR/TDEE будет считаться с дефолтом MODERATE.
      */
     boolean hasActivityInProfile(long telegramUserId) {
@@ -268,7 +268,7 @@ public class FitnessBot {
                     /google_status — статус и время последней синхронизации
                     /google_sync — принудительная синхронизация (тянуть новые данные прямо сейчас)
                     """);
-        send(chatId, body.toString());
+        send(chatId, body.toString(), true);
     }
 
     private void handleConnectGoogle(long chatId) {
@@ -277,7 +277,7 @@ public class FitnessBot {
             url = googleHealthOAuth.buildAuthorizeUrl(chatId);
         } catch (Exception ex) {
             log.warn("Cannot build authorize url", ex);
-            send(chatId, "⚠️ Не удалось сформировать ссылку: " + ex.getMessage());
+            send(chatId, "⚠️ Не удалось сформировать ссылку", true);
             return;
         }
         send(chatId, """
@@ -290,16 +290,16 @@ public class FitnessBot {
                 подтягиваться автоматически 2 раза в сутки: в 10:00 и 22:00.
                 Проверить состояние: /google_status
                 Запустить синхронизацию вручную: /google_sync
-                """.formatted(url));
+                """.formatted(url), true);
     }
 
     private void handleDisconnectGoogle(long chatId) {
         try {
             googleHealthOAuth.disconnect(chatId);
-            send(chatId, "✅ Google-аккаунт отвязан. Синхронизация данных прекращена.");
+            send(chatId, "✅ Google-аккаунт отвязан. Синхронизация данных прекращена.", true);
         } catch (Exception ex) {
             log.warn("Disconnect google failed for {}", chatId, ex);
-            send(chatId, "⚠️ Не получилось отвязать Google: " + ex.getMessage());
+            send(chatId, "⚠️ Не получилось отвязать Google", true);
         }
     }
 
@@ -319,8 +319,8 @@ public class FitnessBot {
                 sb.append("Ошибка последней синхронизации: ")
                         .append(status.lastSyncError()).append("\n");
             }
-            send(chatId, sb.toString());
-        }, () -> send(chatId, "Профиль пользователя не найден."));
+            send(chatId, sb.toString(), true);
+        }, () -> send(chatId, "Профиль пользователя не найден.", true));
     }
 
     /** Принудительная синхронизация с Google Health — дёргает {@link GoogleHealthSyncService}. */
@@ -333,12 +333,12 @@ public class FitnessBot {
                                 ? "✅ Синхронизация выполнена. Новых записей нет."
                                 : "✅ Синхронизация выполнена. Импортировано записей: " + result.size() + ".";
                         log.info("Manual Google sync for {}: {}", chatId, result);
-                        send(chatId, body);
+                        send(chatId, body, true);
                     } catch (Exception ex) {
                         log.warn("Manual Google sync failed for {}", chatId, ex);
-                        send(chatId, "⚠️ Ошибка синхронизации");
+                        send(chatId, "⚠️ Ошибка синхронизации", true);
                     }
                 },
-                () -> send(chatId, "❌ Google Health не подключён. Используй /google_connect."));
+                () -> send(chatId, "❌ Google Health не подключён. Используй /google_connect.", true));
     }
 }

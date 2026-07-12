@@ -36,6 +36,15 @@ public class ActivityEntryEntity extends EntryEntity {
         this.caloriesBurned = caloriesBurned;
     }
 
+    /**
+     * Длительность активности в человеческом формате: {@code 90} минут →
+     * {@code "1 час 30 минут"}, {@code 60} минут → {@code "1 час"}.
+     */
+    public String getFormattedDuration() {
+        if (durationMinutes == null) return null;
+        return RussianPlural.formatMinutes(durationMinutes);
+    }
+
     @Override
     public String type() {
         return "ACTIVITY";
