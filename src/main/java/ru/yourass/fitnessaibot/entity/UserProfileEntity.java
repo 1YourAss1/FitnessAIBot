@@ -8,7 +8,9 @@ import jakarta.persistence.Id;
 import jakarta.persistence.Table;
 import lombok.Getter;
 import lombok.Setter;
+import org.hibernate.annotations.JdbcTypeCode;
 import org.hibernate.annotations.UpdateTimestamp;
+import org.hibernate.type.SqlTypes;
 import ru.yourass.fitnessaibot.ai.BmrCalculator;
 
 import java.time.OffsetDateTime;
@@ -25,6 +27,11 @@ import java.time.OffsetDateTime;
  *       (нужны пол, вес, рост и возраст) и TDEE
  *       (BMR × коэффициент {@link BmrCalculator.ActivityLevel}).</li>
  * </ul>
+ *
+ * <p>Также здесь хранится OAuth-credential Google Health API в виде
+ * JSON-сериализованного {@code com.google.api.client.auth.oauth2.StoredCredential}.
+ * Данные автоматически подтягиваются по расписанию (см.
+ * {@link ru.yourass.fitnessaibot.health.GoogleHealthScheduler}).</p>
  */
 @Getter
 @Entity
@@ -78,6 +85,34 @@ public class UserProfileEntity {
     @Column(name = "activity_level", length = 16)
     @Setter
     private BmrCalculator.ActivityLevel activityLevel;
+
+    // ==================== Google Health / OAuth credential ====================
+
+    /**
+     * JSON-сериализованный {@link com.google.api.client.auth.oauth2.StoredCredential}
+     * (access_token + refresh_token + expirationTimeMillis). Заполнен,
+     * если пользователь прошёл OAuth-flow. Пусто или {@code null} —
+     * аккаунт не подключён.
+     */
+    @JdbcTypeCode(SqlTypes.LONGVARCHAR)
+    @Column(name = "google_health_credential", columnDefinition = "TEXT")
+    @Setter
+    private String googleHealthCredential;
+
+    /** Когда пользователь последний раз нажал «разрешить» в Google OAuth. */
+    @Column(name = "gh_connected_at")
+    @Setter
+    private OffsetDateTime googleHealthConnectedAt;
+
+    /** Успешная синхронизация последний раз прошла в этот момент (UTC). */
+    @Column(name = "gh_last_sync_at")
+    @Setter
+    private OffsetDateTime googleHealthLastSyncAt;
+
+    /** Сообщение об ошибке последней синхронизации (для отображения пользователю). */
+    @Column(name = "gh_last_sync_error", length = 1024)
+    @Setter
+    private String googleHealthLastSyncError;
 
     @UpdateTimestamp
     @Column(name = "updated_at", nullable = false)

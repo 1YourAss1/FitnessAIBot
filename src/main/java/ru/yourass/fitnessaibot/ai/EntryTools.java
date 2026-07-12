@@ -38,6 +38,16 @@ public class EntryTools {
     public static final String CTX_TELEGRAM_USER_ID = "telegramUserId";
     public static final String CTX_SOURCE_MESSAGE = "sourceMessage";
 
+    private static final String FOOD = "FOOD";
+    private static final String ACTIVITY = "ACTIVITY";
+    private static final String SLEEP = "SLEEP";
+    private static final String WEIGHT = "WEIGHT";
+
+    /** Формат сообщения для ненайденной записи: {@code "Запись %s id=%d не найдена"}. */
+    private static final String ENTRY_NOT_FOUND_FORMAT = "Запись %s id=%d не найдена";
+    /** Формат сообщения для чужой записи: {@code "Запись id=%d принадлежит другому пользователю"}. */
+    private static final String ENTRY_FOREIGN_OWNER_FORMAT = "Запись id=%d принадлежит другому пользователю";
+
     private static final Logger log = LoggerFactory.getLogger(EntryTools.class);
     private static final double DEFAULT_WEIGHT_KG = 70.0;
     private static final BmrCalculator.ActivityLevel DEFAULT_ACTIVITY_LEVEL = BmrCalculator.ActivityLevel.MODERATE;
@@ -163,13 +173,13 @@ public class EntryTools {
         OffsetDateTime fromTs = OffsetDateTime.parse(from).withOffsetSameInstant(ZoneOffset.UTC);
         OffsetDateTime toTs = OffsetDateTime.parse(to).withOffsetSameInstant(ZoneOffset.UTC);
         return switch (normalizedType) {
-            case "FOOD" -> foodRepository.findByTelegramUserIdAndRecordedAtBetweenOrderByRecordedAtDesc(
+            case FOOD -> foodRepository.findByTelegramUserIdAndRecordedAtBetweenOrderByRecordedAtDesc(
                     telegramUserId, fromTs, toTs);
-            case "ACTIVITY" -> activityRepository.findByTelegramUserIdAndRecordedAtBetweenOrderByRecordedAtAsc(
+            case ACTIVITY -> activityRepository.findByTelegramUserIdAndRecordedAtBetweenOrderByRecordedAtAsc(
                     telegramUserId, fromTs, toTs);
-            case "SLEEP" -> sleepRepository.findByTelegramUserIdAndRecordedAtBetweenOrderByRecordedAtDesc(
+            case SLEEP -> sleepRepository.findByTelegramUserIdAndRecordedAtBetweenOrderByRecordedAtDesc(
                     telegramUserId, fromTs, toTs);
-            case "WEIGHT" -> weightRepository.findByTelegramUserIdAndRecordedAtBetweenOrderByRecordedAtDesc(
+            case WEIGHT -> weightRepository.findByTelegramUserIdAndRecordedAtBetweenOrderByRecordedAtDesc(
                     telegramUserId, fromTs, toTs);
             default -> throw new IllegalArgumentException("Неизвестный тип: " + type);
         };
@@ -203,13 +213,13 @@ public class EntryTools {
         OffsetDateTime from = day.atStartOfDay().atOffset(ZoneOffset.UTC);
         OffsetDateTime to = day.plusDays(1).atStartOfDay().atOffset(ZoneOffset.UTC).minusNanos(1);
         return switch (normalizedType) {
-            case "FOOD" -> foodRepository
+            case FOOD -> foodRepository
                     .findByTelegramUserIdAndRecordedAtBetweenOrderByRecordedAtDesc(telegramUserId, from, to);
-            case "ACTIVITY" -> activityRepository
+            case ACTIVITY -> activityRepository
                     .findByTelegramUserIdAndRecordedAtBetweenOrderByRecordedAtDesc(telegramUserId, from, to);
-            case "SLEEP" -> sleepRepository
+            case SLEEP -> sleepRepository
                     .findByTelegramUserIdAndRecordedAtBetweenOrderByRecordedAtDesc(telegramUserId, from, to);
-            case "WEIGHT" -> weightRepository
+            case WEIGHT -> weightRepository
                     .findByTelegramUserIdAndRecordedAtBetweenOrderByRecordedAtDesc(telegramUserId, from, to);
             default -> throw new IllegalArgumentException("Неизвестный тип: " + type);
         };
@@ -251,10 +261,10 @@ public class EntryTools {
         requireNonNull(id, "id");
         String normalizedType = type.trim().toUpperCase();
         EntryEntity updated = switch (normalizedType) {
-            case "FOOD" -> {
+            case FOOD -> {
                 FoodEntryEntity e = foodRepository.findById(id)
                         .orElseThrow(() -> new IllegalArgumentException(
-                                "Запись FOOD id=" + id + " не найдена"));
+                                String.format(ENTRY_NOT_FOUND_FORMAT, FOOD, id)));
                 ensureOwner(e, telegramUserId);
                 if (name != null) e.setName(safeName(name));
                 if (calories != null) e.setCalories(calories);
@@ -266,10 +276,10 @@ public class EntryTools {
                 }
                 yield foodRepository.save(e);
             }
-            case "ACTIVITY" -> {
+            case ACTIVITY -> {
                 ActivityEntryEntity e = activityRepository.findById(id)
                         .orElseThrow(() -> new IllegalArgumentException(
-                                "Запись ACTIVITY id=" + id + " не найдена"));
+                                String.format(ENTRY_NOT_FOUND_FORMAT, ACTIVITY, id)));
                 ensureOwner(e, telegramUserId);
                 if (name != null) e.setName(safeName(name));
                 if (durationMinutes != null) e.setDurationMinutes(durationMinutes);
@@ -279,10 +289,10 @@ public class EntryTools {
                 }
                 yield activityRepository.save(e);
             }
-            case "SLEEP" -> {
+            case SLEEP -> {
                 SleepEntryEntity e = sleepRepository.findById(id)
                         .orElseThrow(() -> new IllegalArgumentException(
-                                "Запись SLEEP id=" + id + " не найдена"));
+                                String.format(ENTRY_NOT_FOUND_FORMAT, SLEEP, id)));
                 ensureOwner(e, telegramUserId);
                 if (hours != null) e.setHours(hours);
                 if (recordedAt != null && !recordedAt.isBlank()) {
@@ -290,10 +300,10 @@ public class EntryTools {
                 }
                 yield sleepRepository.save(e);
             }
-            case "WEIGHT" -> {
+            case WEIGHT -> {
                 WeightEntryEntity e = weightRepository.findById(id)
                         .orElseThrow(() -> new IllegalArgumentException(
-                                "Запись WEIGHT id=" + id + " не найдена"));
+                                String.format(ENTRY_NOT_FOUND_FORMAT, WEIGHT, id)));
                 ensureOwner(e, telegramUserId);
                 if (kilograms != null) {
                     if (kilograms <= 0 || kilograms > 500) {
@@ -328,28 +338,28 @@ public class EntryTools {
         requireNonNull(id, "id");
         String normalizedType = type.trim().toUpperCase();
         return switch (normalizedType) {
-            case "FOOD" -> {
+            case FOOD -> {
                 FoodEntryEntity e = foodRepository.findById(id).orElse(null);
                 if (e == null) yield false;
                 ensureOwner(e, telegramUserId);
                 foodRepository.delete(e);
                 yield true;
             }
-            case "ACTIVITY" -> {
+            case ACTIVITY -> {
                 ActivityEntryEntity e = activityRepository.findById(id).orElse(null);
                 if (e == null) yield false;
                 ensureOwner(e, telegramUserId);
                 activityRepository.delete(e);
                 yield true;
             }
-            case "SLEEP" -> {
+            case SLEEP -> {
                 SleepEntryEntity e = sleepRepository.findById(id).orElse(null);
                 if (e == null) yield false;
                 ensureOwner(e, telegramUserId);
                 sleepRepository.delete(e);
                 yield true;
             }
-            case "WEIGHT" -> {
+            case WEIGHT -> {
                 WeightEntryEntity e = weightRepository.findById(id).orElse(null);
                 if (e == null) yield false;
                 ensureOwner(e, telegramUserId);
@@ -378,23 +388,23 @@ public class EntryTools {
         OffsetDateTime from = day.atStartOfDay().atOffset(ZoneOffset.UTC);
         OffsetDateTime to = day.plusDays(1).atStartOfDay().atOffset(ZoneOffset.UTC).minusNanos(1);
         List<? extends EntryEntity> list = switch (normalizedType) {
-            case "FOOD" -> foodRepository
+            case FOOD -> foodRepository
                     .findByTelegramUserIdAndRecordedAtBetweenOrderByRecordedAtDesc(telegramUserId, from, to);
-            case "ACTIVITY" -> activityRepository
+            case ACTIVITY -> activityRepository
                     .findByTelegramUserIdAndRecordedAtBetweenOrderByRecordedAtDesc(telegramUserId, from, to);
-            case "SLEEP" -> sleepRepository
+            case SLEEP -> sleepRepository
                     .findByTelegramUserIdAndRecordedAtBetweenOrderByRecordedAtDesc(telegramUserId, from, to);
-            case "WEIGHT" -> weightRepository
+            case WEIGHT -> weightRepository
                     .findByTelegramUserIdAndRecordedAtBetweenOrderByRecordedAtDesc(telegramUserId, from, to);
             default -> throw new IllegalArgumentException("Неизвестный тип: " + type);
         };
         int count = list.size();
         for (EntryEntity e : list) {
             switch (normalizedType) {
-                case "FOOD" -> foodRepository.deleteById(e.getId());
-                case "ACTIVITY" -> activityRepository.deleteById(e.getId());
-                case "SLEEP" -> sleepRepository.deleteById(e.getId());
-                case "WEIGHT" -> weightRepository.deleteById(e.getId());
+                case FOOD -> foodRepository.deleteById(e.getId());
+                case ACTIVITY -> activityRepository.deleteById(e.getId());
+                case SLEEP -> sleepRepository.deleteById(e.getId());
+                case WEIGHT -> weightRepository.deleteById(e.getId());
                 default -> { /* unreachable */ }
             }
         }
@@ -406,7 +416,7 @@ public class EntryTools {
     private static void ensureOwner(EntryEntity entity, long telegramUserId) {
         if (entity.getTelegramUserId() != telegramUserId) {
             throw new IllegalArgumentException(
-                    "Запись id=" + entity.getId() + " принадлежит другому пользователю");
+                    String.format(ENTRY_FOREIGN_OWNER_FORMAT, entity.getId()));
         }
     }
 

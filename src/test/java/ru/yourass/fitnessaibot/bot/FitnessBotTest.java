@@ -8,6 +8,8 @@ import org.mockito.junit.jupiter.MockitoExtension;
 import ru.yourass.fitnessaibot.config.BotProperties;
 import ru.yourass.fitnessaibot.entity.Gender;
 import ru.yourass.fitnessaibot.entity.UserProfileEntity;
+import ru.yourass.fitnessaibot.health.GoogleHealthOAuthService;
+import ru.yourass.fitnessaibot.health.GoogleHealthSyncService;
 import ru.yourass.fitnessaibot.repository.UserProfileRepository;
 
 import java.util.Optional;
@@ -27,14 +29,22 @@ class FitnessBotTest {
     @Mock
     private UserProfileRepository repo;
 
+    @Mock
+    private GoogleHealthOAuthService googleHealthOAuth;
+
+    @Mock
+    private GoogleHealthSyncService googleHealthSync;
+
     private FitnessBot bot;
 
     @BeforeEach
     void setUp() {
         bot = new FitnessBot(
-                new BotProperties("000000:TEST", "test-bot"),
+                new BotProperties("test-bot", "000000:TEST", null),
                 /* agent */ null,
-                repo
+                repo,
+                googleHealthOAuth,
+                googleHealthSync
         );
     }
 

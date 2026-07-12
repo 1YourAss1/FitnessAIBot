@@ -18,4 +18,11 @@ public interface EntryRepository<T extends EntryEntity> extends JpaRepository<T,
      */
     List<T> findByTelegramUserIdAndRecordedAtBetweenOrderByRecordedAtDesc(
             long telegramUserId, OffsetDateTime from, OffsetDateTime to);
+
+    /**
+     * Есть ли у пользователя запись с данным {@code sourceMessage}
+     * (используется Google Health Sync для дедупликации по уникальному
+     * идентификатору датапоинта).
+     */
+    boolean existsByTelegramUserIdAndSourceMessage(long telegramUserId, String sourceMessage);
 }

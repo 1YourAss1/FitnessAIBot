@@ -6,11 +6,15 @@ import org.springframework.validation.annotation.Validated;
 
 /**
  * Настройки Telegram-бота.
+ *
+ * <p>{@code url} — необязательная ссылка на бота.
+ * Если задана, на странице OAuth-callback'а Google показывается кнопка-ссылка.
  */
 @Validated
 @ConfigurationProperties(prefix = "fitness.bot")
 public record BotProperties(
         @NotBlank String username,
-        @NotBlank String token
+        @NotBlank String token,
+        String url
 ) {
 }
