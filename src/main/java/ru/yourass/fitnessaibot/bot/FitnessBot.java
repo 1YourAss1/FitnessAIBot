@@ -173,37 +173,21 @@ public class FitnessBot {
     }
 
     /**
-     * Прогоняет текст через {@link StringBuilder} и экранирует те Markdown-символы,
-     * которые могут повалить парсер Telegram (нечётное кол-во {@code _} / {@code *}
-     * / {@code `} либо несбалансированные {@code [} / {@code ]}). Валидные пары
-     * ({@code *bold*}, {@code _italic_}, {@code `code`}, {@code [text](url)})
-     * сохраняют форматирование.
+     * Прогоняет текст через {@link StringBuilder} и экранирует ВСЕ Markdown-символы
+     * ({@code _}, {@code *}, {@code `}, {@code [}) префиксом {@code \}. Это гарантирует,
+     * что Telegram-парсер legacy Markdown не упадёт с 400 "can't parse entities"
+     * на любом LLM-ответе, в т.ч. с битым форматированием. Минус — теряется
+     * {@code *bold*}/{@code _italic_}/{@code `code`}/{@code [ссылка](url)}.
      */
     private static String prepareForMarkdown(String text) {
         if (text == null) return "";
-        boolean escapeUnderscore = countOf(text, '_') % 2 != 0;
-        boolean escapeStar = countOf(text, '*') % 2 != 0;
-        boolean escapeBacktick = countOf(text, '`') % 2 != 0;
-        boolean escapeBracket = countOf(text, '[') != countOf(text, ']');
         StringBuilder sb = new StringBuilder(text.length());
         for (int i = 0; i < text.length(); i++) {
             char c = text.charAt(i);
-            boolean escape = (c == '_' && escapeUnderscore)
-                    || (c == '*' && escapeStar)
-                    || (c == '`' && escapeBacktick)
-                    || (c == '[' && escapeBracket);
-            if (escape) sb.append('\\');
+            if (c == '_' || c == '*' || c == '`' || c == '[') sb.append('\\');
             sb.append(c);
         }
         return sb.toString();
-    }
-
-    private static int countOf(String s, char c) {
-        int n = 0;
-        for (int i = 0; i < s.length(); i++) {
-            if (s.charAt(i) == c) n++;
-        }
-        return n;
     }
 
     /** Показывает «typing…» в шапке чата на время обработки запроса LLM. */
