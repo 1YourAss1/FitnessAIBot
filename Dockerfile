@@ -35,6 +35,7 @@ USER spring
 HEALTHCHECK NONE
 
 ENTRYPOINT ["java", \
+    "--enable-native-access=ALL-UNNAMED", \
     "-XX:+UseContainerSupport", \
     "-XX:MaxRAMPercentage=75.0", \
     "-Djava.security.egd=file:/dev/./urandom", \

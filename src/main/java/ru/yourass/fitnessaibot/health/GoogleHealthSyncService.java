@@ -43,6 +43,8 @@ public class GoogleHealthSyncService {
 
     private static final Logger log = LoggerFactory.getLogger(GoogleHealthSyncService.class);
 
+    private static final String APPLICATION_NAME = "FitnessAI";
+
     private final GoogleHealthOAuthService oauth;
     private final UserProfileRepository userProfileRepository;
     private final GoogleHealthProperties props;
@@ -69,7 +71,9 @@ public class GoogleHealthSyncService {
         if (credential == null) {
             throw new IllegalStateException("Google Health не подключён для пользователя " + userId);
         }
-        GoogleHealthAPI api = new GoogleHealthAPI.Builder(httpTransport, jsonFactory, credential).build();
+        GoogleHealthAPI api = new GoogleHealthAPI.Builder(httpTransport, jsonFactory, credential)
+                .setApplicationName(APPLICATION_NAME)
+                .build();
 
         Instant lastSync = profile.getGoogleHealthLastSyncAt() != null
                 ? profile.getGoogleHealthLastSyncAt().toInstant()
@@ -137,19 +141,21 @@ public class GoogleHealthSyncService {
         }
 
         public boolean isEmpty() {
-            return imported.isEmpty();
+            return size() == 0;
         }
 
         public int size() {
-            return imported.size();
+            return imported.values().stream().mapToInt(Integer::intValue).sum();
         }
 
         @Override
         public String toString() {
             StringBuilder sb = new StringBuilder();
             imported.forEach((path, count) -> {
-                if (!sb.isEmpty()) sb.append(' ');
-                sb.append(path).append('=').append(count);
+                if (count > 0) {
+                    if (!sb.isEmpty()) sb.append(' ');
+                    sb.append(path).append('=').append(count);
+                }
             });
             return sb.toString();
         }

@@ -4,6 +4,7 @@ import com.google.api.services.health.v4.model.DataPoint;
 import com.google.api.services.health.v4.model.ObservationSampleTime;
 import com.google.api.services.health.v4.model.ObservationTimeInterval;
 import com.google.api.services.health.v4.model.SessionTimeInterval;
+import lombok.extern.slf4j.Slf4j;
 import ru.yourass.fitnessaibot.entity.EntryEntity;
 import ru.yourass.fitnessaibot.entity.UserProfileEntity;
 import ru.yourass.fitnessaibot.health.GoogleHealthSyncService;
@@ -24,6 +25,7 @@ import java.time.ZoneOffset;
  * Google Health API и построения стабильного {@code sourceMessage} для
  * дедупликации.</p>
  */
+@Slf4j
 public abstract class DataTypeSync {
 
     /** Префикс {@code sourceMessage} для записей, импортированных из Google Health. */
@@ -129,9 +131,14 @@ public abstract class DataTypeSync {
     protected static int exerciseDurationMinutes(String activeDuration) {
         if (activeDuration == null || activeDuration.isBlank()) return 0;
         try {
-            long seconds = Duration.parse(activeDuration).getSeconds();
+            String formattedDuration = activeDuration.trim().toUpperCase();
+            if (!formattedDuration.startsWith("P")) {
+                formattedDuration = "PT" + formattedDuration;
+            }
+            long seconds = Duration.parse(formattedDuration).getSeconds();
             return seconds > 0 ? Math.max(1, (int) Math.round(seconds / 60.0)) : 0;
-        } catch (Exception _) {
+        } catch (Exception ex) {
+            log.error(ex.getMessage(), ex);
             return 0;
         }
     }
