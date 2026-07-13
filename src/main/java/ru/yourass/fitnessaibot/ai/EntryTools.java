@@ -172,7 +172,7 @@ public class EntryTools {
         String normalizedType = type.trim().toUpperCase();
         OffsetDateTime fromTs = OffsetDateTime.parse(from).withOffsetSameInstant(ZoneOffset.UTC);
         OffsetDateTime toTs = OffsetDateTime.parse(to).withOffsetSameInstant(ZoneOffset.UTC);
-        return switch (normalizedType) {
+        List<? extends EntryEntity> result = switch (normalizedType) {
             case FOOD -> foodRepository.findByTelegramUserIdAndRecordedAtBetweenOrderByRecordedAtDesc(
                     telegramUserId, fromTs, toTs);
             case ACTIVITY -> activityRepository.findByTelegramUserIdAndRecordedAtBetweenOrderByRecordedAtAsc(
@@ -183,6 +183,9 @@ public class EntryTools {
                     telegramUserId, fromTs, toTs);
             default -> throw new IllegalArgumentException("Неизвестный тип: " + type);
         };
+        log.info("Tool readByTypeAndPeriod: user={} type={} from={} to={} count={}",
+                telegramUserId, normalizedType, fromTs, toTs, result.size());
+        return result;
     }
 
     @Tool(description = "Возвращает текущий сохранённый вес пользователя в килограммах. "
@@ -190,10 +193,12 @@ public class EntryTools {
             + "Вызывай перед расчётом caloriesBurned в saveActivity, если вес не указан в сообщении.")
     public double readCurrentWeightKg(ToolContext toolContext) {
         Long telegramUserId = telegramUserIdFromContext(toolContext);
-        return userProfileRepository.findByTelegramUserId(telegramUserId)
+        double weight = userProfileRepository.findByTelegramUserId(telegramUserId)
                 .map(UserProfileEntity::getWeightKg)
                 .filter(w -> w > 0)
                 .orElse(DEFAULT_WEIGHT_KG);
+        log.info("Tool readCurrentWeightKg: user={} weight={}", telegramUserId, weight);
+        return weight;
     }
 
     @Tool(description = "Возвращает записи конкретного типа за КАЛЕНДАРНЫЙ ДЕНЬ (UTC). "
@@ -212,7 +217,7 @@ public class EntryTools {
                 : LocalDate.parse(date.trim());
         OffsetDateTime from = day.atStartOfDay().atOffset(ZoneOffset.UTC);
         OffsetDateTime to = day.plusDays(1).atStartOfDay().atOffset(ZoneOffset.UTC).minusNanos(1);
-        return switch (normalizedType) {
+        List<? extends EntryEntity> result = switch (normalizedType) {
             case FOOD -> foodRepository
                     .findByTelegramUserIdAndRecordedAtBetweenOrderByRecordedAtDesc(telegramUserId, from, to);
             case ACTIVITY -> activityRepository
@@ -223,6 +228,9 @@ public class EntryTools {
                     .findByTelegramUserIdAndRecordedAtBetweenOrderByRecordedAtDesc(telegramUserId, from, to);
             default -> throw new IllegalArgumentException("Неизвестный тип: " + type);
         };
+        log.info("Tool findEntriesByTypeAndDate: user={} type={} date={} count={}",
+                telegramUserId, normalizedType, day, result.size());
+        return result;
     }
 
     @Tool(description = "Обновляет ПОЛЯ существующей записи по её id (запись должна принадлежать "
@@ -337,7 +345,7 @@ public class EntryTools {
         Long telegramUserId = telegramUserIdFromContext(toolContext);
         requireNonNull(id, "id");
         String normalizedType = type.trim().toUpperCase();
-        return switch (normalizedType) {
+        boolean deleted = switch (normalizedType) {
             case FOOD -> {
                 FoodEntryEntity e = foodRepository.findById(id).orElse(null);
                 if (e == null) yield false;
@@ -368,6 +376,9 @@ public class EntryTools {
             }
             default -> throw new IllegalArgumentException("Неизвестный тип: " + type);
         };
+        log.info("Tool deleteEntry: user={} type={} id={}deleted={}",
+                telegramUserId, normalizedType, id, deleted);
+        return deleted;
     }
 
     @Tool(description = "Удаляет ВСЕ записи указанного типа за КАЛЕНДАРНЫЙ ДЕНЬ (UTC). "

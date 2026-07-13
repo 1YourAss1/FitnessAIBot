@@ -37,3 +37,7 @@ build/
 .env
 .env.*
 !.env.example
+
+# Локальные runtime-override конфиги
+config/
+config/**
