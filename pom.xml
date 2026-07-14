@@ -19,7 +19,7 @@
 
     <properties>
         <java.version>25</java.version>
-        <spring-ai.version>2.0.0-M2</spring-ai.version>
+        <spring-ai.version>2.0.0</spring-ai.version>
         <telegram-bot.version>10.1.0</telegram-bot.version>
         <google-api-client.version>2.7.2</google-api-client.version>
         <google-oauth-client.version>1.39.0</google-oauth-client.version>

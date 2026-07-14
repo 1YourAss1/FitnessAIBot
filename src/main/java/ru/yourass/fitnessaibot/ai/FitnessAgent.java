@@ -6,6 +6,7 @@ import org.springframework.ai.chat.client.ChatClient;
 import org.springframework.ai.chat.memory.ChatMemory;
 import org.springframework.ai.chat.memory.MessageWindowChatMemory;
 import org.springframework.ai.chat.client.advisor.MessageChatMemoryAdvisor;
+import org.springframework.ai.openai.OpenAiChatOptions;
 import org.springframework.core.io.ClassPathResource;
 import org.springframework.stereotype.Component;
 
@@ -18,7 +19,6 @@ import java.time.OffsetDateTime;
 import java.time.ZoneOffset;
 import java.time.format.DateTimeFormatter;
 import java.util.Map;
-import java.util.regex.Pattern;
 
 /**
  * Единый агент-оркестратор фитнес-трекера.
@@ -89,6 +89,8 @@ public class FitnessAgent {
                 .defaultSystem(SYSTEM_PROMPT)
                 .defaultTools(entryTools)
                 .defaultAdvisors(memoryAdvisor)
+                .defaultOptions(OpenAiChatOptions.builder()
+                        .extraBody(Map.of("reasoning_split", true)))
                 .build();
     }
 
@@ -105,7 +107,7 @@ public class FitnessAgent {
                 .format(DateTimeFormatter.ISO_OFFSET_DATE_TIME);
         String profileCtx = profileContextBuilder.build(telegramUserId);
         String wrapped = "now=" + nowUtc + " " + profileCtx + ": " + userMessage;
-        String raw = chatClient.prompt()
+        String content = chatClient.prompt()
                 .user(wrapped)
                 .toolContext(Map.of(
                         EntryTools.CTX_TELEGRAM_USER_ID, telegramUserId,
@@ -115,22 +117,7 @@ public class FitnessAgent {
                         telegramUserId))
                 .call()
                 .content();
-        String cleaned = cleanResponse(raw);
-        log.info("Agent reply for {}: {}", telegramUserId, cleaned);
-        return cleaned;
-    }
-
-    /**
-     * Очищает ответ модели от служебных блоков перед отправкой пользователю:
-     * удаляет {@code <think>…</think>} блоки рассуждений (chain-of-thought),
-     * которые некоторые провайдеры добавляют по умолчанию, и схлопывает
-     * whitespace по краям.
-     */
-    static String cleanResponse(String raw) {
-        if (raw == null) {
-            return null;
-        }
-        String cleaned = Pattern.compile("<think>.*?</think>", Pattern.DOTALL).matcher(raw).replaceAll("").strip();
-        return cleaned.isEmpty() ? "" : cleaned;
+        log.info("Agent reply for {}: {}", telegramUserId, content);
+        return content;
     }
 }
