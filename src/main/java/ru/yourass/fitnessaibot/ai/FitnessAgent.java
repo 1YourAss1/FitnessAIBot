@@ -20,6 +20,8 @@ import java.time.ZoneOffset;
 import java.time.format.DateTimeFormatter;
 import java.util.Map;
 
+import reactor.core.publisher.Flux;
+
 /**
  * Единый агент-оркестратор фитнес-трекера.
  *
@@ -119,5 +121,31 @@ public class FitnessAgent {
                 .content();
         log.info("Agent reply for {}: {}", telegramUserId, content);
         return content;
+    }
+
+    /**
+     * Стриминговый вариант {@link #handle(long, String)}: возвращает
+     * {@link Flux} текстовых фрагментов по мере генерации моделью.
+     *
+     * <p>Используется ботом, чтобы отправлять пользователю «растущий»
+     * драфт сообщения через {@code sendRichMessageDraft} в реальном времени,
+     * не дожидаясь полного ответа.</p>
+     */
+    public Flux<String> stream(long telegramUserId, String userMessage) {
+        log.info("Agent stream: user={} text='{}'", telegramUserId, userMessage);
+        String nowUtc = OffsetDateTime.now(ZoneOffset.UTC)
+                .format(DateTimeFormatter.ISO_OFFSET_DATE_TIME);
+        String profileCtx = profileContextBuilder.build(telegramUserId);
+        String wrapped = "now=" + nowUtc + " " + profileCtx + ": " + userMessage;
+        return chatClient.prompt()
+                .user(wrapped)
+                .toolContext(Map.of(
+                        EntryTools.CTX_TELEGRAM_USER_ID, telegramUserId,
+                        EntryTools.CTX_SOURCE_MESSAGE, userMessage))
+                .advisors(a -> a.param(
+                        org.springframework.ai.chat.memory.ChatMemory.CONVERSATION_ID,
+                        telegramUserId))
+                .stream()
+                .content();
     }
 }

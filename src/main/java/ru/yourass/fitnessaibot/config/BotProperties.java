@@ -15,6 +15,7 @@ import org.springframework.validation.annotation.Validated;
 public record BotProperties(
         @NotBlank String username,
         @NotBlank String token,
-        String url
+        String url,
+        boolean streamReplyEnabled
 ) {
 }

@@ -25,4 +25,28 @@ public interface UserProfileRepository extends JpaRepository<UserProfileEntity, 
         return findByTelegramUserId(telegramUserId)
                 .filter(p -> p.getGoogleHealthCredential() != null && !p.getGoogleHealthCredential().isBlank());
     }
+
+    /** Возвращает true, если у пользователя заполнены все 4 поля, нужные для BMR/TDEE. */
+    default boolean hasBmrProfile(long telegramUserId) {
+        return findByTelegramUserId(telegramUserId)
+                .map(UserProfileEntity::hasBmrInputs)
+                .orElse(false);
+    }
+
+    /** Возвращает true, если у пользователя задана цель по весу (> 0 кг). */
+    default boolean hasGoalWeight(long telegramUserId) {
+        return findByTelegramUserId(telegramUserId)
+                .map(p -> p.getGoalWeightKg() != null && p.getGoalWeightKg() > 0)
+                .orElse(false);
+    }
+
+    /**
+     * Возвращает true, если у пользователя задан уровень ежедневной активности —
+     * иначе BMR/TDEE будет считаться с дефолтом MODERATE.
+     */
+    default boolean hasActivityInProfile(long telegramUserId) {
+        return findByTelegramUserId(telegramUserId)
+                .map(p -> p.getActivityLevel() != null)
+                .orElse(false);
+    }
 }
