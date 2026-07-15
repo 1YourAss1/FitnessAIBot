@@ -75,13 +75,14 @@ public class GoogleHealthSyncService {
                 .setApplicationName(APPLICATION_NAME)
                 .build();
 
-        Instant lastSync = profile.getGoogleHealthLastSyncAt() != null
-                ? profile.getGoogleHealthLastSyncAt().toInstant()
-                : Instant.now().minus(Duration.ofDays(props.lookbackDays()));
+        int windowDays = profile.getGoogleHealthLastSyncAt() == null
+                ? props.lookbackDays()
+                : props.incrementalSyncDays();
+        Instant lowerBound = Instant.now().minus(Duration.ofDays(windowDays));
 
         SyncResult syncResult = new SyncResult();
         for (DataTypeSync dataTypeSync : syncs) {
-            String value = dataTypeSync.formatFilterTimestamp(lastSync);
+            String value = dataTypeSync.formatFilterTimestamp(lowerBound);
             String filter = dataTypeSync.dataTypeForFilter() + "." + dataTypeSync.filterTimeField()
                     + " >= \"" + value + "\"";
             int imported = syncDataType(userId, api, dataTypeSync, filter, profile);
