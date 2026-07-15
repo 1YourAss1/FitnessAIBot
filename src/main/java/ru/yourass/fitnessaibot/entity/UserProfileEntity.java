@@ -11,7 +11,6 @@ import lombok.Setter;
 import org.hibernate.annotations.JdbcTypeCode;
 import org.hibernate.annotations.UpdateTimestamp;
 import org.hibernate.type.SqlTypes;
-import ru.yourass.fitnessaibot.ai.BmrCalculator;
 
 import java.time.OffsetDateTime;
 
@@ -25,7 +24,7 @@ import java.time.OffsetDateTime;
  *       если пользователь сам явно не указал значения в сообщении;</li>
  *   <li>для расчёта BMR по формуле Миффлина-Сан Жеора
  *       (нужны пол, вес, рост и возраст) и TDEE
- *       (BMR × коэффициент {@link BmrCalculator.ActivityLevel}).</li>
+ *       (BMR × коэффициент {@link ActivityLevel}).</li>
  * </ul>
  *
  * <p>Также здесь хранится OAuth-credential Google Health API в виде
@@ -75,16 +74,15 @@ public class UserProfileEntity {
 
     /**
      * Уровень ежедневной активности по шкале Харриса-Бенедикта. Используется
-     * для перевода BMR → TDEE ({@link BmrCalculator.ActivityLevel#getFactor()}).
+     * для перевода BMR → TDEE ({@link ActivityLevel#getFactor()}).
      * {@code null}, если пользователь ещё не указал — тогда
-     * {@link ru.yourass.fitnessaibot.ai.EntryTools#calculateBmrTdee} возьмёт
-     * дефолт {@link BmrCalculator.ActivityLevel#MODERATE} и сообщит об этом
-     * в результате.
+     * {@link ru.yourass.fitnessaibot.ai.ProfileContextBuilder} возьмёт
+     * дефолт {@link ActivityLevel#MODERATE}.
      */
     @Enumerated(EnumType.STRING)
     @Column(name = "activity_level", length = 16)
     @Setter
-    private BmrCalculator.ActivityLevel activityLevel;
+    private ActivityLevel activityLevel;
 
     // ==================== Google Health / OAuth credential ====================
 
@@ -144,7 +142,7 @@ public class UserProfileEntity {
 
     public UserProfileEntity(Long telegramUserId, Gender gender, Integer age,
                              Double heightCm, Double weightKg, Double goalWeightKg,
-                             BmrCalculator.ActivityLevel activityLevel) {
+                             ActivityLevel activityLevel) {
         this(telegramUserId, gender, age, heightCm, weightKg, goalWeightKg);
         this.activityLevel = activityLevel;
     }

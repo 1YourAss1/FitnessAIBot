@@ -9,6 +9,7 @@ import ru.yourass.fitnessaibot.entity.ActivityEntryEntity;
 import ru.yourass.fitnessaibot.entity.EntryEntity;
 import ru.yourass.fitnessaibot.entity.FoodEntryEntity;
 import ru.yourass.fitnessaibot.entity.Gender;
+import ru.yourass.fitnessaibot.entity.ActivityLevel;
 import ru.yourass.fitnessaibot.entity.SleepEntryEntity;
 import ru.yourass.fitnessaibot.entity.UserProfileEntity;
 import ru.yourass.fitnessaibot.entity.WeightEntryEntity;
@@ -236,69 +237,6 @@ class EntryToolsTest {
         assertThat(profile.getWeightKg()).isNull();
     }
 
-    @Test
-    void calculateBmrTdee_requiresFullProfile() {
-        clearUser(USER_A);
-        userProfileRepository.findByTelegramUserId(USER_A).ifPresent(userProfileRepository::delete);
-
-        // Без профиля вообще.
-        assertThatThrownBy(() -> tools.calculateBmrTdee(ctxOf(USER_A, "")))
-                .isInstanceOf(IllegalStateException.class);
-
-        // Только вес — не хватает остального.
-        tools.saveProfile(null, null, null, 80.0, null, null, ctxOf(USER_A, ""));
-        assertThatThrownBy(() -> tools.calculateBmrTdee(ctxOf(USER_A, "")))
-                .isInstanceOf(IllegalStateException.class)
-                .hasMessageContaining("BMR");
-    }
-
-    @Test
-    void calculateBmrTdee_worksWithFullProfile_usesStoredActivity() {
-        clearUser(USER_A);
-        userProfileRepository.findByTelegramUserId(USER_A).ifPresent(userProfileRepository::delete);
-
-        tools.saveProfile("MALE", 30, 180.0, 80.0, null, "ACTIVE", ctxOf(USER_A, ""));
-        BmrCalculator.BmrResult result = tools.calculateBmrTdee(ctxOf(USER_A, ""));
-        assertThat(result.bmrKcal()).isEqualTo(1780.0);
-        assertThat(result.activityLevel()).isEqualTo(BmrCalculator.ActivityLevel.ACTIVE);
-        // 1780 * 1.725 = 3070.5 → округлено до 3070.5
-        assertThat(result.tdeeKcal()).isEqualTo(3070.5);
-    }
-
-    @Test
-    void calculateBmrTdee_fallsBackToDefaultActivity() {
-        // Без явного уровня активности в профиле — тул берёт дефолт MODERATE,
-        // а модель должна упомянуть это в финальном ответе (см. SYSTEM_PROMPT).
-        clearUser(USER_A);
-        userProfileRepository.findByTelegramUserId(USER_A).ifPresent(userProfileRepository::delete);
-        tools.saveProfile("MALE", 30, 180.0, 80.0, null, null, ctxOf(USER_A, ""));
-
-        BmrCalculator.BmrResult result = tools.calculateBmrTdee(ctxOf(USER_A, ""));
-        assertThat(result.activityLevel()).isEqualTo(BmrCalculator.ActivityLevel.MODERATE);
-        // 1780 * 1.55 = 2759
-        assertThat(result.tdeeKcal()).isEqualTo(2759.0);
-    }
-
-    @Test
-    void calculateBmrTdee_acceptsRussianActivityLabels() {
-        // saveProfile должен понимать и латиницу, и русские описания уровней.
-        clearUser(USER_A);
-        userProfileRepository.findByTelegramUserId(USER_A).ifPresent(userProfileRepository::delete);
-        UserProfileEntity saved = tools.saveProfile("MALE", 30, 180.0, 80.0, null,
-                "высокий", ctxOf(USER_A, ""));
-        assertThat(saved.getActivityLevel()).isEqualTo(BmrCalculator.ActivityLevel.ACTIVE);
-    }
-
-    @Test
-    void calculateBmrTdee_rejectsUnknownActivityLabel() {
-        clearUser(USER_A);
-        userProfileRepository.findByTelegramUserId(USER_A).ifPresent(userProfileRepository::delete);
-
-        assertThatThrownBy(() -> tools.saveProfile("MALE", 30, 180.0, 80.0, null,
-                "ЧАСТО-АКТИВНО", ctxOf(USER_A, "")))
-                .isInstanceOf(IllegalArgumentException.class);
-    }
-
     @Autowired
     private ru.yourass.fitnessaibot.ai.ProfileContextBuilder profileContextBuilder;
 
@@ -317,7 +255,7 @@ class EntryToolsTest {
         tools.saveProfile("мужской", 30, 180.0, 80.0, null, null, ctxOf(USER_A, ""));
 
         assertThat(profileContextBuilder.build(USER_A))
-                .isEqualTo("profile: gender=MALE age=30 height=180 weight=80");
+                .isEqualTo("profile: gender=MALE age=30 height=180 weight=80 bmr=1780 tdee=2759");
     }
 
     @Test
@@ -334,22 +272,24 @@ class EntryToolsTest {
     void profileContext_includesActivityWhenKnown() {
         clearUser(USER_A);
         userProfileRepository.findByTelegramUserId(USER_A).ifPresent(userProfileRepository::delete);
-        tools.saveProfile("MALE", 30, 180.0, 80.0, 78.0, "ACTIVE", ctxOf(USER_A, ""));
+        tools.saveProfile("MALE", 30, 180.0, 80.0, 78.0, ActivityLevel.ACTIVE, ctxOf(USER_A, ""));
 
         assertThat(profileContextBuilder.build(USER_A))
-                .isEqualTo("profile: gender=MALE age=30 height=180 weight=80 goal=78 activity=ACTIVE");
+                .isEqualTo("profile: gender=MALE age=30 height=180 weight=80 goal=78 "
+                        + "activity=ACTIVE bmr=1780 tdee=3070.5");
     }
 
     @Test
     void profileContext_omitsActivityWhenUnknown() {
         // Поле activity= не должно появляться в строке, если в профиле пусто —
-        // это сигнал модели, что активность пока не задана.
+        // это сигнал модели, что активность пока не задана. bmr/tdee при этом
+        // считаются с дефолтом MODERATE.
         clearUser(USER_A);
         userProfileRepository.findByTelegramUserId(USER_A).ifPresent(userProfileRepository::delete);
         tools.saveProfile("MALE", 30, 180.0, 80.0, null, null, ctxOf(USER_A, ""));
 
         assertThat(profileContextBuilder.build(USER_A))
-                .isEqualTo("profile: gender=MALE age=30 height=180 weight=80");
+                .isEqualTo("profile: gender=MALE age=30 height=180 weight=80 bmr=1780 tdee=2759");
     }
 
     @Test
@@ -367,10 +307,11 @@ class EntryToolsTest {
     void saveProfile_activity_setsField() {
         clearUser(USER_A);
         userProfileRepository.findByTelegramUserId(USER_A).ifPresent(userProfileRepository::delete);
-        tools.saveProfile("MALE", 30, 180.0, 80.0, null, "MODERATE", ctxOf(USER_A, ""));
+        tools.saveProfile("MALE", 30, 180.0, 80.0, null, ActivityLevel.MODERATE, ctxOf(USER_A, ""));
 
         UserProfileEntity reloaded = userProfileRepository.findByTelegramUserId(USER_A).orElseThrow();
-        assertThat(reloaded.getActivityLevel()).isEqualTo(BmrCalculator.ActivityLevel.MODERATE);
+        assertThat(reloaded.getActivityLevel())
+                .isEqualTo(ActivityLevel.MODERATE);
     }
 
     @Test
@@ -378,12 +319,13 @@ class EntryToolsTest {
         // Установили активность, потом обновили профиль без неё — должно остаться.
         clearUser(USER_A);
         userProfileRepository.findByTelegramUserId(USER_A).ifPresent(userProfileRepository::delete);
-        tools.saveProfile("MALE", 30, 180.0, 80.0, null, "ACTIVE", ctxOf(USER_A, ""));
+        tools.saveProfile("MALE", 30, 180.0, 80.0, null, ActivityLevel.ACTIVE, ctxOf(USER_A, ""));
         tools.saveProfile(null, null, null, 84.5, null, null, ctxOf(USER_A, ""));
 
         UserProfileEntity reloaded = userProfileRepository.findByTelegramUserId(USER_A).orElseThrow();
         assertThat(reloaded.getWeightKg()).isEqualTo(84.5);
-        assertThat(reloaded.getActivityLevel()).isEqualTo(BmrCalculator.ActivityLevel.ACTIVE);
+        assertThat(reloaded.getActivityLevel())
+                .isEqualTo(ActivityLevel.ACTIVE);
     }
 
     @Test

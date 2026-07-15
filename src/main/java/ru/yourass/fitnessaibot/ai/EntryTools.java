@@ -9,6 +9,7 @@ import org.springframework.ai.tool.annotation.ToolParam;
 import org.springframework.stereotype.Component;
 import org.springframework.transaction.annotation.Transactional;
 import ru.yourass.fitnessaibot.entity.ActivityEntryEntity;
+import ru.yourass.fitnessaibot.entity.ActivityLevel;
 import ru.yourass.fitnessaibot.entity.EntryEntity;
 import ru.yourass.fitnessaibot.entity.FoodEntryEntity;
 import ru.yourass.fitnessaibot.entity.Gender;
@@ -26,7 +27,6 @@ import java.time.OffsetDateTime;
 import java.time.ZoneOffset;
 import java.time.format.DateTimeParseException;
 import java.util.List;
-import java.util.Locale;
 
 /**
  * Набор инструментов (tools) для фитнес-агента.
@@ -50,14 +50,12 @@ public class EntryTools {
 
     private static final Logger log = LoggerFactory.getLogger(EntryTools.class);
     private static final double DEFAULT_WEIGHT_KG = 70.0;
-    private static final BmrCalculator.ActivityLevel DEFAULT_ACTIVITY_LEVEL = BmrCalculator.ActivityLevel.MODERATE;
 
     private final FoodEntryRepository foodRepository;
     private final ActivityEntryRepository activityRepository;
     private final SleepEntryRepository sleepRepository;
     private final WeightEntryRepository weightRepository;
     private final UserProfileRepository userProfileRepository;
-    private final BmrCalculator bmrCalculator;
 
     @Tool(description = "Сохраняет запись о приёме пищи. Вызывай, когда пользователь сообщает что съел.")
     @Transactional
@@ -451,13 +449,11 @@ public class EntryTools {
                     + "просто НЕ передавай этот параметр.",
                     required = false) Double goalWeightKg,
             @ToolParam(description = "Уровень активности: SEDENTARY, LIGHT, MODERATE, ACTIVE, VERY_ACTIVE. "
-                    + "null — не менять. Используется для перевода BMR в TDEE. "
-                    + "Можно передавать латиницей или по-русски (малоподвижный/лёгкий/умеренный/высокий/очень_высокий).",
-                    required = false) String activityLevel,
+                    + "null — не менять. Используется для перевода BMR в TDEE.",
+                    required = false) ActivityLevel activityLevel,
             ToolContext toolContext) {
         Long telegramUserId = telegramUserIdFromContext(toolContext);
         Gender parsedGender = parseGender(gender);
-        BmrCalculator.ActivityLevel parsedLevel = parseActivityLevelOrNull(activityLevel);
         if (age != null && (age < 1 || age > 120)) {
             throw new IllegalArgumentException("Подозрительный возраст: " + age);
         }
@@ -488,8 +484,8 @@ public class EntryTools {
         if (goalWeightKg != null) {
             profile.setGoalWeightKg(goalWeightKg);
         }
-        if (parsedLevel != null) {
-            profile.setActivityLevel(parsedLevel);
+        if (activityLevel != null) {
+            profile.setActivityLevel(activityLevel);
         }
         UserProfileEntity saved = userProfileRepository.save(profile);
         log.info("Tool saveProfile: user={} gender={} age={} heightCm={} weightKg={} goalKg={} activity={}",
@@ -506,33 +502,6 @@ public class EntryTools {
         Long telegramUserId = telegramUserIdFromContext(toolContext);
         return userProfileRepository.findByTelegramUserId(telegramUserId)
                 .orElseGet(() -> new UserProfileEntity(telegramUserId, null, null));
-    }
-
-
-    @Tool(description = "Считает базовый обмен веществ (BMR) и суточный расход энергии (TDEE) "
-            + "по формуле Миффлина-Сан Жеора. Нужны пол, возраст, рост и вес. "
-            + "Уровень активности берётся ИЗ ПРОФИЛЯ (поле activityLevel, заполняется через saveProfile). "
-            + "Если в профиле его нет — используется дефолт MODERATE "
-            + "(3-5 тренировок в неделю); об этом нужно упомянуть пользователю в ответе. "
-            + "BmrResult.bmrKcal — ккал в покое; BmrResult.tdeeKcal — ккал с учётом активности.")
-    public BmrCalculator.BmrResult calculateBmrTdee(ToolContext toolContext) {
-        Long telegramUserId = telegramUserIdFromContext(toolContext);
-        UserProfileEntity profile = userProfileRepository.findByTelegramUserId(telegramUserId)
-                .orElseThrow(() -> new IllegalStateException(
-                        "Профиль пользователя не найден. Сначала вызови saveProfile."));
-        if (!profile.hasBmrInputs()) {
-            throw new IllegalStateException(
-                    "Недостаточно данных для расчёта BMR (нужен пол, возраст, рост и вес). "
-                            + "Сначала вызови saveProfile.");
-        }
-        BmrCalculator.ActivityLevel level = profile.getActivityLevel() != null
-                ? profile.getActivityLevel()
-                : DEFAULT_ACTIVITY_LEVEL;
-        BmrCalculator.BmrResult result = bmrCalculator.calculate(profile, level);
-        log.info("Tool calculateBmrTdee: user={} level={} (stored={}) bmr={} tdee={}",
-                telegramUserId, level, profile.getActivityLevel(),
-                result.bmrKcal(), result.tdeeKcal());
-        return result;
     }
 
     private static String safeName(String name) {
@@ -652,44 +621,6 @@ public class EntryTools {
             case "female", "f", "женский", "жен", "ж" -> Gender.FEMALE;
             default -> throw new IllegalArgumentException(
                     "Не удалось распознать пол: " + raw);
-        };
-    }
-
-    /**
-     * Парсит строковое представление уровня активности.
-     * Принимает латиницу ({@code SEDENTARY/LIGHT/MODERATE/ACTIVE/VERY_ACTIVE})
-     * или русские описания из {@code BmrCalculator.ActivityLevel#getDescription()}.
-     * Регистр и пробелы игнорируются.
-     *
-     * <p>Возвращает {@code null} для пустой строки — сигнал «не менять поле»,
-     * который используется в {@link #saveProfile}.</p>
-     */
-    static BmrCalculator.ActivityLevel parseActivityLevelOrNull(String raw) {
-        if (raw == null || raw.isBlank()) {
-            return null;
-        }
-        String s = raw.trim().toUpperCase(Locale.ROOT);
-        // Прямое совпадение по имени enum.
-        for (BmrCalculator.ActivityLevel l : BmrCalculator.ActivityLevel.values()) {
-            if (l.name().equals(s)) {
-                return l;
-            }
-        }
-        // Маппинг русских описаний (модель может прислать «малоподвижный» и т.п.).
-        return switch (s.toLowerCase(Locale.ROOT)) {
-            case "малоподвижный", "сидячий", "сидячий образ жизни" -> BmrCalculator.ActivityLevel.SEDENTARY;
-            case "лёгкий", "легкий", "лёгкая активность", "лёгкая активность 1-3 раза в неделю"
-                    -> BmrCalculator.ActivityLevel.LIGHT;
-            case "умеренный", "умеренная активность", "умеренная активность 3-5 раз в неделю"
-                    -> BmrCalculator.ActivityLevel.MODERATE;
-            case "высокий", "высокая активность", "высокая активность 6-7 раз в неделю"
-                    -> BmrCalculator.ActivityLevel.ACTIVE;
-            case "очень_высокий", "очень высокий", "очень высокая активность", "спорт ежедневно"
-                    -> BmrCalculator.ActivityLevel.VERY_ACTIVE;
-            default -> throw new IllegalArgumentException(
-                    "Неизвестный уровень активности: " + raw
-                            + ". Допустимо: SEDENTARY, LIGHT, MODERATE, ACTIVE, VERY_ACTIVE "
-                            + "или по-русски: малоподвижный / лёгкий / умеренный / высокий / очень высокий");
         };
     }
 }

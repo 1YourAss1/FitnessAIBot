@@ -2,7 +2,7 @@ package ru.yourass.fitnessaibot.repository;
 
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
-import ru.yourass.fitnessaibot.ai.BmrCalculator;
+import ru.yourass.fitnessaibot.entity.ActivityLevel;
 import ru.yourass.fitnessaibot.entity.Gender;
 import ru.yourass.fitnessaibot.entity.UserProfileEntity;
 
@@ -86,7 +86,7 @@ class UserProfileRepositoryTest {
     void hasActivityInProfile_trueWhenSet() {
         when(repo.findByTelegramUserId(8L)).thenReturn(Optional.of(
                 new UserProfileEntity(8L, Gender.MALE, 30, 180.0, 80.0, null,
-                        BmrCalculator.ActivityLevel.MODERATE)));
+                        ActivityLevel.MODERATE)));
         assertThat(repo.hasActivityInProfile(8L)).isTrue();
     }
 
