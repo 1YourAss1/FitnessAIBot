@@ -57,7 +57,7 @@ public class EntryTools {
     private final WeightEntryRepository weightRepository;
     private final UserProfileRepository userProfileRepository;
 
-    @Tool(description = "Сохраняет запись о приёме пищи. Вызывай, когда пользователь сообщает что съел.")
+    @Tool(description = "Сохраняет одну запись о приёме пищи в БД")
     @Transactional
     public FoodEntryEntity saveFood(
             @ToolParam(description = "Краткое название блюда/продукта") String name,
