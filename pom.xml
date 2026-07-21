@@ -13,7 +13,7 @@
 
     <groupId>ru.yourass</groupId>
     <artifactId>FitnessAIBot</artifactId>
-    <version>0.2.2-SNAPSHOT</version>
+    <version>0.2.3-SNAPSHOT</version>
     <name>FitnessAIBot</name>
     <description>FitnessAIBot — Telegram-бот для учёта еды, активности и сна (MVP)</description>
 

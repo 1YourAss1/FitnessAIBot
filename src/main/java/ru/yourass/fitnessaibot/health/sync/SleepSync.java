@@ -67,11 +67,12 @@ public class SleepSync extends DataTypeSync {
         // Похожей ручной нет — dedup по sourceMessage и создаём новую
         String source = dataPoint.getName();
         if (source == null || source.isBlank()) return false;
-        if (sleepRepository.existsByTelegramUserIdAndSourceMessage(userId, source)) return false;
+        String fullSource = SOURCE_PREFIX + source;
+        if (sleepRepository.existsByTelegramUserIdAndSourceMessage(userId, fullSource)) return false;
 
         SleepEntryEntity entity = new SleepEntryEntity(userId, hours);
         entity.setRecordedAt(endAt);
-        entity.setSourceMessage(SOURCE_PREFIX + source);
+        entity.setSourceMessage(fullSource);
         sleepRepository.save(entity);
         return true;
     }

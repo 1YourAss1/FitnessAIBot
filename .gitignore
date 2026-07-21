@@ -41,3 +41,5 @@ build/
 # Локальные runtime-override конфиги
 config/
 config/**
+
+opencode.json

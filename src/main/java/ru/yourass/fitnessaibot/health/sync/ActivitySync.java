@@ -98,12 +98,13 @@ public class ActivitySync extends DataTypeSync {
         // Похожей ручной нет — dedup по sourceMessage (защита от дубля самого Google) и создаём новую
         String source = dataPoint.getName();
         if (source == null || source.isBlank()) return false;
-        if (activityRepository.existsByTelegramUserIdAndSourceMessage(userId, source)) return false;
+        String fullSource = SOURCE_PREFIX + source;
+        if (activityRepository.existsByTelegramUserIdAndSourceMessage(userId, fullSource)) return false;
 
         ActivityEntryEntity entity = new ActivityEntryEntity(
                 userId, name, duration, caloriesBurned);
         entity.setRecordedAt(startAt);
-        entity.setSourceMessage(SOURCE_PREFIX + source);
+        entity.setSourceMessage(fullSource);
         activityRepository.save(entity);
         return true;
     }
